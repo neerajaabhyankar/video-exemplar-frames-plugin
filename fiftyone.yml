@@ -1,0 +1,11 @@
+fiftyone:
+  version: ">=1.11.0"
+name: "@neerajaabhyankar/video-exemplar-frames-plugin"
+type: plugin
+author: Neeraja Abhyankar
+version: 1.0.0
+url: https://github.com/neerajaabhyankar/video-exemplar-frames-plugin
+license: Apache 2.0
+description: Extract exemplar frames from a video dataset
+operators:
+  # - extract_exemplar_frames
