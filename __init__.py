@@ -14,11 +14,31 @@ import fiftyone.operators.types as types
 import fiftyone.utils.transformers as fout
 from fiftyone.core.utils import add_sys_path
 
-# with add_sys_path(os.path.dirname(os.path.abspath(__file__))):
-#     from exemplars import extract_exemplar_frames
+with add_sys_path(os.path.dirname(os.path.abspath(__file__))):
+    from exemplars import extract_exemplar_frames
 
 def _input_control_flow(ctx):
-    return ctx.dataset.view()
+    inputs = types.Object()
+
+    # max fraction of exemplars to extract
+    inputs.float(
+        "max_fraction_exemplars",
+        label="Max Fraction of Exemplars",
+        default=0.1,
+        min=0.0,
+        max=1.0,
+        view=types.SliderView(min=0.0, max=1.0, step=0.05),
+    )
+
+    # exemplar frame field
+    inputs.str(
+        "exemplar_frame_field",
+        label="Exemplar Frame Field",
+        default="exemplar",
+        view=types.TextView(placeholder="e.g. 'exemplar1'"),
+    )
+
+    return types.Property(inputs)
 
 class ExtractExemplarFrames(foo.Operator):
     @property
@@ -27,7 +47,7 @@ class ExtractExemplarFrames(foo.Operator):
             name="extract_exemplar_frames", 
             label="Extract Exemplar Frames Operator",
             description="Extract exemplar frames from a video dataset",
-            # icon="/assets/video.svg",
+            icon="/assets/keyframes.svg",
             dynamic=True,
         )
 
@@ -35,12 +55,15 @@ class ExtractExemplarFrames(foo.Operator):
         return _input_control_flow(ctx)
 
     def execute(self, ctx):
-        ctx.dataset.persistent = True
+        # ctx.dataset.persistent = True
         view = ctx.target_view()
-        
-        # extract_exemplar_frames(
-        #     view,
-        # )
+        max_fraction_exemplars = ctx.params.get("max_fraction_exemplars")
+        exemplar_frame_field = ctx.params.get("exemplar_frame_field")
+        extract_exemplar_frames(
+            view,
+            max_fraction_exemplars=max_fraction_exemplars,
+            exemplar_frame_field=exemplar_frame_field,
+        )
         return {}
 
 
