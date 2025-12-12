@@ -248,14 +248,14 @@ def propagate_bboxes_with_densecrf(source_frame, target_frame, source_detections
     return fo.Detections(detections=propagated_detections)
 
 
-def propagate_segmentations_with_grabcut(source_frame, target_frame, source_segmentations):
+def propagate_segmentations_with_grabcut(source_frame, target_frame, source_detections):
     """
     Propagate segmentations from source_frame to target_frame using cv2's grabcut.
     
     Args:
         source_frame: The source frame with segmentations (used for reference, not directly used)
         target_frame: The target frame to propagate to
-        source_segmentations: The segmentations from source_frame (fo.Detections)
+        source_detections: The segmentations from source_frame (fo.Detections)
         
     Returns:
         fo.Detections: New segmentations for the target frame
@@ -270,7 +270,7 @@ def propagate_segmentations_with_grabcut(source_frame, target_frame, source_segm
     
     propagated_segmentations = []
     
-    for segmentation in source_segmentations.detections:
+    for segmentation in source_detections.detections:
         # Get the mask from the source segmentation
         source_mask = segmentation.mask
 
@@ -366,14 +366,14 @@ def propagate_segmentations_with_grabcut(source_frame, target_frame, source_segm
     return fo.Detections(detections=propagated_segmentations)
 
 
-def propagate_segmentations_with_densecrf(source_frame, target_frame, source_segmentations):
+def propagate_segmentations_with_densecrf(source_frame, target_frame, source_detections):
     """
     Propagate segmentations from source_frame to target_frame using DenseCRF.
     
     Args:
         source_frame: The source frame with segmentations (used for reference, not directly used)
         target_frame: The target frame to propagate to
-        source_segmentations: The segmentations from source_frame (fo.Detections)
+        source_detections: The segmentations from source_frame (fo.Detections)
         
     Returns:
         fo.Detections: New detections with propagated masks for the target frame
@@ -394,7 +394,7 @@ def propagate_segmentations_with_densecrf(source_frame, target_frame, source_seg
     
     propagated_segmentations = []
     
-    for segmentation in source_segmentations.detections:
+    for segmentation in source_detections.detections:
         # Get the mask from the source segmentation (relative to bbox)
         source_mask = segmentation.mask
         

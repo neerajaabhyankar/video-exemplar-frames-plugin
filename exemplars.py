@@ -35,13 +35,14 @@ def extract_exemplar_frames(
 
     if hasattr(view.first(), "embeddings"):
         # use embeddings to extract exemplars
+        expected_num_clusters = int(num_frames * max_fraction_exemplars)
+        expected_num_clusters = expected_num_clusters / 2  # allow for some noisy samples
+        min_cluster_size = int(num_frames / expected_num_clusters)
 
         from sklearn.cluster import HDBSCAN
-
         np.random.seed(42)
-
         hdbscan = HDBSCAN(
-            min_cluster_size=4,
+            min_cluster_size=min_cluster_size,
             min_samples=3,
             cluster_selection_epsilon=0.5,
             store_centers="medoid",

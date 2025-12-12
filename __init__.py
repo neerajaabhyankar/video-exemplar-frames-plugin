@@ -16,6 +16,7 @@ from fiftyone.core.utils import add_sys_path
 
 with add_sys_path(os.path.dirname(os.path.abspath(__file__))):
     from exemplars import extract_exemplar_frames
+    from annoprop import propagate_annotations
 
 
 class ExtractExemplarFrames(foo.Operator):
@@ -40,6 +41,7 @@ class ExtractExemplarFrames(foo.Operator):
             min=0.0,
             max=1.0,
             view=types.SliderView(min=0.0, max=1.0, step=0.05),
+            required=True,
         )
 
         # exemplar frame field
@@ -47,15 +49,15 @@ class ExtractExemplarFrames(foo.Operator):
             "exemplar_frame_field",
             label="Exemplar Frame Field (indicator field)",
             default="exemplar",
-            view=types.TextView(placeholder="e.g. 'exemplar_1'"),
+            required=True,
         )
 
         # brain key
         inputs.str(
-            "exemplar_run_brain_key",
+            "exemplar_run_key",
             label="Brain Key for Exemplar Frame Extraction",
             default="extract_exemplar_frames",
-            view=types.TextView(placeholder="e.g. 'exemplar_run_1'"),
+            required=True,
         )
 
         return types.Property(inputs)
@@ -65,7 +67,7 @@ class ExtractExemplarFrames(foo.Operator):
         view = ctx.target_view()
         max_fraction_exemplars = ctx.params.get("max_fraction_exemplars", 0.1)
         exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
-        exemplar_run_brain_key = ctx.params.get("exemplar_run_brain_key", "extract_exemplar_frames")
+        exemplar_run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
 
         exemplar_assignments = extract_exemplar_frames(
             view,
@@ -77,16 +79,16 @@ class ExtractExemplarFrames(foo.Operator):
         config = ctx.dataset.init_run()
         config.max_fraction_exemplars = max_fraction_exemplars
         config.exemplar_frame_field = exemplar_frame_field
-        ctx.dataset.register_run(exemplar_run_brain_key, config, overwrite=True, cleanup=False)
+        ctx.dataset.register_run(exemplar_run_key, config, overwrite=True, cleanup=False)
         # TODO(neeraja): run cleanup should involve deleting the exemplar_frame_field
         
-        results = ctx.dataset.init_run_results(exemplar_run_brain_key)
+        results = ctx.dataset.init_run_results(exemplar_run_key)
         results.exemplar_assignments = exemplar_assignments
-        ctx.dataset.save_run_results(exemplar_run_brain_key, results, overwrite=True)
+        ctx.dataset.save_run_results(exemplar_run_key, results, overwrite=True)
         
         return {
-            "run_key": exemplar_run_brain_key,
-            "message": f"Exemplar frames extracted and stored in run '{exemplar_run_brain_key}'",
+            "run_key": exemplar_run_key,
+            "message": f"Exemplar frames extracted and stored in run '{exemplar_run_key}'",
         }
 
 class PropagateAnnotationsFromExemplars(foo.Operator):
@@ -101,7 +103,7 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
         )
 
     def execute(self, ctx):
-        run_key = ctx.params.get("exemplar_run_brain_key", "extract_exemplar_frames")
+        run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
         
         # Load the exemplar_assignments from the custom run
         try:
@@ -118,11 +120,14 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
         # Now exemplar_assignments is available for use in propagation logic
         # TODO: implement propagation logic using exemplar_assignments
         # exemplar_assignments format: {sample_id: [exemplar_frame_ids]}
-        
-        return {
-            "message": f"Loaded exemplar assignments from run '{run_key}'",
-            "num_samples": len(exemplar_assignments),
-        }
+
+        propagate_annotations(
+            view=ctx.target_view(),
+            exemplar_frame_field=stored_exemplar_frame_field,
+            annotation_field=annotation_field,
+            exemplar_assignments=exemplar_assignments,
+        )
+        return {}
 
     def resolve_input(self, ctx):
         inputs = types.Object()
@@ -153,7 +158,7 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
                     run_dropdown.add_choice(run_key, label=run_key)
             
             inputs.enum(
-                "exemplar_run_brain_key",
+                "exemplar_run_key",
                 run_dropdown.values(),
                 default=available_runs[0] if available_runs else None,
                 label="Exemplar Extraction Run Key",
@@ -167,7 +172,7 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             "annotation_field",
             label="Annotation Field",
             default="human_labels",
-            view=types.TextView(placeholder="e.g. 'humanlabels1'"),
+            required=True,
         )
 
         return types.Property(inputs)

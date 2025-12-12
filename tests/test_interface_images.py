@@ -10,7 +10,7 @@ ctx1 = {
     "params": {
         "exemplar_frame_field": "exemplar_test",
         "max_fraction_exemplars": 0.1,
-        "exemplar_run_brain_key": "exemplar_test_run_key",
+        "exemplar_run_key": "exemplar_test_run_key",
     },
 }
 
@@ -24,7 +24,7 @@ print(exemplar_result.result["message"])
 ctx2 = {
     "dataset": dataset,
     "params": {
-        "exemplar_run_brain_key": exemplar_result.result["run_key"],
+        "exemplar_run_key": exemplar_result.result["run_key"],
         "annotation_field": "sam",
     },
 }
