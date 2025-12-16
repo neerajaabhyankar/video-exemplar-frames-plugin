@@ -20,4 +20,6 @@ using frames_dataset.py
 
 4. Applied zero-shot instance segmentation {person, basketball} to some of the frames
 
-5. TODO: Prove out AnnoProp using this...
+5. Tested Annotation Propagation on some of the frames using quicktests/annoprop_frames.py
+
+6. [replacing 4.] Exported this to https://ha.test.fiftyone.ai/datasets using foe_dataset.py for human annotation
