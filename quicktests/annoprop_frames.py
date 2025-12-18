@@ -644,9 +644,12 @@ if __name__ == "__main__":
     dataset = fo.load_dataset("basketball_frames")
 
     PROP_IDS = [
-        ("6939cb1e464fecaa395fb631", "6939cb1e464fecaa395fb633"),
-        ("6939cb1f464fecaa395fb682", "6939cb1f464fecaa395fb683"),
-        ("6939cb18464fecaa395fb3e5", "6939cb17464fecaa395fb3da")
+        # ("6939cb1e464fecaa395fb631", "6939cb1e464fecaa395fb633"),
+        # ("6939cb1f464fecaa395fb682", "6939cb1f464fecaa395fb683"),
+        # ("6939cb18464fecaa395fb3e5", "6939cb17464fecaa395fb3da")
+        ("6939cb18464fecaa395fb3fc", "6939cb18464fecaa395fb3fb"),
+        ("6939cb19464fecaa395fb487", "6939cb19464fecaa395fb488"),
+        ("6939cb1e464fecaa395fb60a", "6939cb1e464fecaa395fb60b")
     ]
     ANNOTATION_FIELD = "sam"
 
@@ -659,8 +662,8 @@ if __name__ == "__main__":
 
         # prop_detections = propagate_bboxes_with_grabcut(
         # prop_detections = propagate_bboxes_with_densecrf(
-        # prop_segmentations = propagate_segmentations_with_grabcut(
-        prop_segmentations = propagate_segmentations_with_densecrf(
+        prop_segmentations = propagate_segmentations_with_grabcut(
+        # prop_segmentations = propagate_segmentations_with_densecrf(
             prev_frame,
             curr_frame,
             prop_from_sample[ANNOTATION_FIELD]

@@ -63,6 +63,17 @@ def compute_embeddings(
     return dataset
 
 
+def compute_visualizations_existing_embeddings(
+    dataset: fo.Dataset,
+    embeddings_field: str = "embeddings",
+    brain_key: str = "clip_vis",
+):
+    """
+    Compute visualizations for a dataset with existing embeddings.
+    """
+    pass
+
+
 if __name__ == "__main__":
     # Compute embeddings for the basketball frames dataset
     dataset = compute_embeddings(

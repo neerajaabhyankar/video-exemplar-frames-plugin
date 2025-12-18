@@ -63,25 +63,67 @@ Annotations
 
 anno_key = "ha_test_1"
 label_schema = {
-    "ha_test_1": {
-        "type": "detections",
-        "classes": [
-            "person",
-            "basketball",
-        ],
-    },
+    "type": "detections",
+    "classes": [
+        "person",
+        "basketball",
+    ],
 }
 
-# Note: this is not how the future API will look like
-# make a new field
-# new_field = fo.Detections(
-#     target_field=anno_key,
-#     schema=label_schema[anno_key],
-# )
 dataset.add_sample_field(
     anno_key,
-    ftype=fof.EmbeddedDocumentField,
+    fo.EmbeddedDocumentField,
     embedded_doc_type=fol.Detections,
-    schema=label_schema[anno_key],
+    schema=label_schema,
 )
+dataset.save()
+
+"""
+Download annotations as labels in FiftyOne Image Detections format
+Run the following in the fo environment
+"""
+
+import json
+import fiftyone as fo
+dataset = fo.load_dataset("basketball_frames")
+
+labels_file = "/Users/neeraja/Downloads/basketball_annotations_phase_2_file-QYkYA5QH.json"
+
+with open(labels_file, "r") as f:
+    labels = json.load(f)
+
+# labels["labels"].items() have
+# key = "frame_002728"
+# value = [{'label': 'basketball',
+#   'bounding_box': [0.784967648474526,
+#    0.6373296800947867,
+#    0.026721249259478674,
+#    0.04639983214849921]},
+#  {'label': 'person',
+#   'bounding_box': [0.8339323070941943,
+#    0.46314672195892576,
+#    0.1143098804058057,
+#    0.22550108609794628]}]
+# add these labels to the dataset
+
+# TODO(neeraja): find a cleaner alternative to this
+
+anno_key = "ha_test_1"  # your label field
+frame_map = labels["labels"]  # {"frame_002728": [...], ...}
+
+def to_detections(objs):
+    return fo.Detections(
+        detections=[
+            fo.Detection(label=obj["label"], bounding_box=obj["bounding_box"])
+            for obj in objs
+        ]
+    )
+
+for sample in dataset:
+    key = f"frame_{sample.frame_number:06d}"
+    objs = frame_map.get(key)
+    if objs:
+        sample[anno_key] = to_detections(objs)
+        sample.save()
+
 dataset.save()

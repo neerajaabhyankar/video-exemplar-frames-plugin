@@ -22,4 +22,9 @@ using frames_dataset.py
 
 5. Tested Annotation Propagation on some of the frames using quicktests/annoprop_frames.py
 
-6. [replacing 4.] Exported this to https://ha.test.fiftyone.ai/datasets using foe_dataset.py for human annotation
+6. [replacing 4.] Exported this to https://ha.test.fiftyone.ai/datasets (script in foe_dataset.py) for human annotation. Annotated using the UI [PARTIALLY]. Downloaded labels and applied them here (script in foe_dataset.py).
+
+7. Created a couple of views that are completely annotated.
+`spinning_part1`, `side_top_layup`, `underbasket_reverse_layup`
+
+8. First, testing Annotation Propagation only. See tests/test_annoprop_level1.py
