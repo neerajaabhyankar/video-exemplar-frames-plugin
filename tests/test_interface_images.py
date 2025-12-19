@@ -25,7 +25,8 @@ ctx2 = {
     "dataset": dataset,
     "params": {
         "exemplar_run_key": exemplar_result.result["run_key"],
-        "annotation_field": "sam",
+        "input_annotation_field": "sam",
+        "output_annotation_field": "sam_propagated",
     },
 }
 
@@ -34,3 +35,6 @@ anno_prop_result = foo.execute_operator(
     ctx2
 )
 print(anno_prop_result.result["message"])
+
+session = fo.launch_app(dataset)
+session.wait()

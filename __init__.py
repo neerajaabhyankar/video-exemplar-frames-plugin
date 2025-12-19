@@ -115,19 +115,23 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             raise ValueError(f"Could not load exemplar run '{run_key}': {e}. "
                            f"Make sure you have run 'extract_exemplar_frames' first.")
         
-        annotation_field = ctx.params.get("annotation_field", "human_labels")
+        input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
+        output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
         
         # Now exemplar_assignments is available for use in propagation logic
         # TODO: implement propagation logic using exemplar_assignments
         # exemplar_assignments format: {sample_id: [exemplar_frame_ids]}
 
-        propagate_annotations(
+        propagation_score = propagate_annotations(
             view=ctx.target_view(),
             exemplar_frame_field=stored_exemplar_frame_field,
-            annotation_field=annotation_field,
+            input_annotation_field=input_annotation_field,
+            output_annotation_field=output_annotation_field,
             exemplar_assignments=exemplar_assignments,
         )
-        return {}
+        return {
+            "propagation_score": propagation_score,
+        }
 
     def resolve_input(self, ctx):
         inputs = types.Object()
@@ -169,9 +173,16 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             raise ValueError("No exemplar extraction runs found. Please run 'extract_exemplar_frames' first.")
 
         inputs.str(
-            "annotation_field",
-            label="Annotation Field",
+            "input_annotation_field",
+            label="Annotation Field to Propagate from",
             default="human_labels",
+            required=True,
+        )
+
+        inputs.str(
+            "output_annotation_field",
+            label="Annotation Field to Propagate to",
+            default="human_labels_propagated",
             required=True,
         )
 
