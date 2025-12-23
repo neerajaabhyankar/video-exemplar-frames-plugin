@@ -5,7 +5,9 @@ from annoprop import propagate_annotations
 
 
 dataset = fo.load_dataset("basketball_frames")
-dataset_level1 = dataset.load_saved_view("spinning_part1")
+# dataset_slice = dataset.load_saved_view("spinning_part1")
+dataset_slice = dataset.load_saved_view("side_top_layup")
+# dataset_slice = dataset.load_saved_view("underbasket_reverse_layup")
 
 
 """
@@ -20,7 +22,7 @@ And record the accuracy of the propagation from it
 exemplar_assignments = {}
 dataset.add_sample_field("exemplar_frame", fo.BooleanField)
 exemplar_id = None
-for ii, sample in enumerate(dataset_level1.sort_by("frame_number")):
+for ii, sample in enumerate(dataset_slice.sort_by("frame_number")):
     if ii % 2 == 0:
         sample["exemplar_frame"] = True
         exemplar_id = sample.id
@@ -31,7 +33,7 @@ for ii, sample in enumerate(dataset_level1.sort_by("frame_number")):
 
 
 score = propagate_annotations(
-    dataset_level1,
+    dataset_slice,
 	exemplar_frame_field="exemplar_frame", 
 	input_annotation_field="ha_test_1",
 	output_annotation_field="ha_test_1_propagated",
@@ -40,5 +42,5 @@ score = propagate_annotations(
 
 print(f"Score: {score}")
 
-session = fo.launch_app(dataset_level1)
+session = fo.launch_app(dataset_slice)
 session.wait()

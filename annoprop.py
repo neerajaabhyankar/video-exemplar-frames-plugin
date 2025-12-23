@@ -34,7 +34,11 @@ def normalized_bbox_to_pixel_coords(bbox, image_width, image_height):
     y1 = int(bbox[1] * image_height)
     x2 = int((bbox[0] + bbox[2]) * image_width)
     y2 = int((bbox[1] + bbox[3]) * image_height)
-    return (x1, y1, x2, y2)
+    x1 = max(0, min(x1, image_width - 1))
+    y1 = max(0, min(y1, image_height - 1))
+    x2 = max(x1 + 1, min(x2, image_width))
+    y2 = max(y1 + 1, min(y2, image_height))
+    return x1, y1, x2, y2
 
 
 def box_iou(box_a, box_b) -> float:
@@ -128,6 +132,9 @@ def propagate_detections_with_grabcut(target_frame, source_detections):
     target_height, target_width = target_frame.shape[:2]
     
     propagated_detections = []
+
+    if not hasattr(source_detections, "detections"):
+        return fo.Detections(detections=propagated_detections)
     
     for detection in source_detections.detections:
         # Initialize GrabCut mask
@@ -242,6 +249,158 @@ def propagate_detections_with_grabcut(target_frame, source_detections):
     return fo.Detections(detections=propagated_detections)
 
 
+def propagate_detections_with_densecrf(target_frame, source_detections):
+    """
+    Propagate detections from source_detections to target_frame using PyDenseCRF.
+    Args:
+        target_frame: The target frame to propagate to
+        source_detections: The detections from source_frame (fo.Detections)
+
+    Returns:
+        fo.Detections: New detections for the target frame
+    """
+    import pydensecrf.densecrf as dcrf
+
+    # HYPERPARAMS
+    DENSECRF_SPATIAL_SMOOTHNESS = 5
+    DENSECRF_COMPAT = 5
+    DENSECRF_BILATERAL_SPATIAL_SMOOTHNESS = 40
+    DENSECRF_BILATERAL_COLOR_SMOOTHNESS = 70
+    DENSECRF_BILATERAL_COMPAT = 50
+    UNARY_TEMPERATURE = 5.0
+    DENSECRF_ITERATIONS = 10
+    EPSILON = 1e-8
+
+    target_height, target_width = target_frame.shape[:2]
+    n_points = target_width * target_height
+    
+    propagated_detections = []
+
+    if not hasattr(source_detections, "detections"):
+        return fo.Detections(detections=propagated_detections)
+    
+    for detection in source_detections.detections:
+        # Get source bbox and convert to pixel coordinates
+        source_bbox = detection.bounding_box
+        x1, y1, x2, y2 = normalized_bbox_to_pixel_coords(source_bbox, target_width, target_height)
+        
+        # Get the mask from the source detection (optional)
+        source_mask = detection.mask
+        
+        # Create unary potential
+        unary = np.zeros((2, n_points), dtype=np.float32)  # 2 classes: bg, fg
+        
+        if source_mask is not None:
+            # Case 1: Has mask - use mask-based initialization
+            # Fit mask to bbox size
+            source_mask_fitted = fit_mask_to_bbox(source_mask, (y2 - y1, x2 - x1))
+            
+            # Place mask in full frame coordinates
+            source_mask_framed = np.zeros((target_height, target_width), dtype=np.float32)
+            source_mask_framed[y1:y2, x1:x2] = source_mask_fitted.astype(np.float32)
+            
+            # Normalize mask to 0-1 range if needed
+            if source_mask_framed.max() > 1.0:
+                source_mask_framed = source_mask_framed / 255.0
+            
+            # Convert mask to probabilities
+            mask_flat = source_mask_framed.flatten()
+            
+            # Set probabilities based on mask values
+            unary[0, :] = 1.0 - mask_flat  # background probability
+            unary[1, :] = mask_flat  # foreground probability
+            
+            # Apply temperature to soften/harden unary confidence
+            if UNARY_TEMPERATURE != 1.0:
+                unary = np.power(unary, 1.0 / UNARY_TEMPERATURE)
+            
+            # Add small epsilon to avoid log(0)
+            unary = np.clip(unary, EPSILON, 1.0)
+            
+            # Normalize
+            unary_sum = unary.sum(axis=0, keepdims=True)
+            unary = unary / (unary_sum + EPSILON)
+            
+            # Convert to negative log probabilities
+            unary = -np.log(unary)
+        else:
+            # Case 2: No mask - use bbox-based initialization
+            # Create a soft initialization: pixels inside bbox have higher foreground probability
+            for y in range(target_height):
+                for x in range(target_width):
+                    idx = y * target_width + x
+                    if x1 <= x < x2 and y1 <= y < y2:
+                        # Inside bbox: higher foreground probability
+                        unary[0, idx] = 0.3  # background
+                        unary[1, idx] = 0.7  # foreground
+                    else:
+                        # Outside bbox: higher background probability
+                        unary[0, idx] = 0.9  # background
+                        unary[1, idx] = 0.1  # foreground
+            
+            # Convert to negative log probabilities
+            unary = -np.log(unary + EPSILON)
+        
+        # Create DenseCRF
+        d = dcrf.DenseCRF2D(target_width, target_height, 2)
+        
+        # Set unary potential
+        d.setUnaryEnergy(unary)
+        
+        # Add pairwise Gaussian potential (spatial smoothness)
+        d.addPairwiseGaussian(sxy=DENSECRF_SPATIAL_SMOOTHNESS, compat=DENSECRF_COMPAT)
+        
+        # Add pairwise bilateral potential (color-dependent)
+        # Convert BGR to RGB for pydensecrf
+        rgb_frame = cv2.cvtColor(target_frame, cv2.COLOR_BGR2RGB)
+        d.addPairwiseBilateral(sxy=DENSECRF_BILATERAL_SPATIAL_SMOOTHNESS, 
+                              srgb=DENSECRF_BILATERAL_COLOR_SMOOTHNESS, 
+                              rgbim=rgb_frame, 
+                              compat=DENSECRF_BILATERAL_COMPAT)
+        
+        # Run inference
+        Q = d.inference(DENSECRF_ITERATIONS)
+        
+        # Get the MAP prediction (foreground class = 1)
+        map_result = np.argmax(Q, axis=0).reshape((target_height, target_width))
+        
+        # Create binary mask
+        refined_mask = (map_result == 1).astype(np.uint8) * 255
+        
+        # Find new bbox from refined mask
+        contours, _ = cv2.findContours(refined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            new_bbox = [x / target_width, y / target_height, w / target_width, h / target_height]
+        else:
+            print("Warning: No contour found for detection")
+            new_bbox = source_bbox
+        
+        # Extract mask relative to new bbox (if mask was provided)
+        refined_mask_fitted = None
+        if source_mask is not None:
+            x1_new, y1_new, x2_new, y2_new = normalized_bbox_to_pixel_coords(new_bbox, target_width, target_height)
+            refined_mask_fitted = refined_mask[y1_new:y2_new, x1_new:x2_new]
+        
+        # Create new detection
+        new_detection = fo.Detection(
+            bounding_box=new_bbox,
+            mask=refined_mask_fitted,
+            label=detection.label if hasattr(detection, 'label') else None,
+        )
+        propagated_detections.append(new_detection)
+    
+    return fo.Detections(detections=propagated_detections)
+
+
+def propagate_detections_ot_1(source_frame, target_frame, source_detections):
+    """
+    Propagate detections from source_detections to target_frame using Object Tracking Algorithm
+    """
+    return source_detections
+
+
 def propagate_annotations(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
 	exemplar_frame_field: str,
@@ -277,6 +436,7 @@ def propagate_annotations(
             sample_frame = cv2.imread(sample.filepath)
             # propagated_detections = propagate_detections_no_op(sample_frame, exemplar_detections)
             propagated_detections = propagate_detections_with_grabcut(sample_frame, exemplar_detections)
+            # propagated_detections = propagate_detections_with_densecrf(sample_frame, exemplar_detections)
             sample[output_annotation_field] = propagated_detections
             sample.save()
 
