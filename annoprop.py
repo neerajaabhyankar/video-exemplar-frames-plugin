@@ -106,6 +106,26 @@ def evaluate(original_detections, propagated_detections):
     return total_iou / max(G, P)
 
 
+def evaluate_matched(original_detections, propagated_detections):
+    """
+    Evaluate the propagation against the original detection.
+    Args:
+        original_detections: The original detections
+        propagated_detections: The propagated detections
+    Returns:
+        float: The evaluation score
+    """
+    # TODO(neeraja): implement for masks
+    if len(original_detections.detections) == 0:
+        return 0.0
+    
+    assert len(original_detections.detections) == len(propagated_detections.detections)
+    total_iou = 0.0
+    for od, pd in zip(original_detections.detections, propagated_detections.detections):
+        total_iou += box_iou(od, pd)
+    return total_iou / len(original_detections.detections)
+
+
 def propagate_detections_no_op(target_frame, source_detections):
     """
     Propagate detections as-is (Do nothing).
@@ -233,7 +253,7 @@ def propagate_detections_with_grabcut(target_frame, source_detections):
             new_bbox = [x/target_width, y/target_height, w/target_width, h/target_height]
         else:
             print("Warning: No contour found for segmentation")
-            continue
+            new_bbox = (0, 0, 0, 0)
 
         # make it relative to the new bbox
         x1, y1, x2, y2 = normalized_bbox_to_pixel_coords(new_bbox, target_width, target_height)
@@ -275,7 +295,6 @@ def propagate_detections_with_densecrf(target_frame, source_detections):
     n_points = target_width * target_height
     
     propagated_detections = []
-
     if not hasattr(source_detections, "detections"):
         return fo.Detections(detections=propagated_detections)
     
@@ -375,7 +394,7 @@ def propagate_detections_with_densecrf(target_frame, source_detections):
             new_bbox = [x / target_width, y / target_height, w / target_width, h / target_height]
         else:
             print("Warning: No contour found for detection")
-            new_bbox = source_bbox
+            new_bbox = (0, 0, 0, 0)
         
         # Extract mask relative to new bbox (if mask was provided)
         refined_mask_fitted = None
@@ -394,11 +413,36 @@ def propagate_detections_with_densecrf(target_frame, source_detections):
     return fo.Detections(detections=propagated_detections)
 
 
-def propagate_detections_ot_1(source_frame, target_frame, source_detections):
+def propagate_detections_cv2_ot(source_frame, target_frame, source_detections):
     """
     Propagate detections from source_detections to target_frame using Object Tracking Algorithm
     """
-    return source_detections
+    source_height, source_width = source_frame.shape[:2]
+    target_height, target_width = target_frame.shape[:2]
+    
+    propagated_detections = []
+    if not hasattr(source_detections, "detections"):
+        return fo.Detections(detections=propagated_detections)
+    
+    tracker = cv2.TrackerCSRT_create()
+    # tracker = cv2.legacy.TrackerMedianFlow_create()
+    for detection in source_detections.detections:
+        x1, y1, x2, y2 = normalized_bbox_to_pixel_coords(
+            detection.bounding_box, source_width, source_height
+        )
+        tracker.init(source_frame, (x1, y1, x2 - x1, y2 - y1))
+        try:
+            ok, (x, y, w, h) = tracker.update(target_frame)
+        except:
+            print("Warning: Tracker failed")
+            x, y, w, h = (0, 0, 0, 0)
+        new_bbox = [x / target_width, y / target_height, w / target_width, h / target_height]
+        new_detection = fo.Detection(
+            bounding_box=new_bbox,
+            label=detection.label,
+        )
+        propagated_detections.append(new_detection)
+    return fo.Detections(detections=propagated_detections)
 
 
 def propagate_annotations(
@@ -421,7 +465,7 @@ def propagate_annotations(
         evaluate_propagation: Whether to evaluate the propagation against
                               the input annotation field present in the propagation targets.
     """
-    score = 0.0
+    scores = []
 
     for sample in view:
         if sample[exemplar_frame_field]:
@@ -430,21 +474,24 @@ def propagate_annotations(
             exemplar_frame_ids = exemplar_assignments[sample.id]
 
             # TODO(neeraja): handle multiple exemplar frames for the same sample
-            exemplar_frame = view[exemplar_frame_ids[0]]
-            exemplar_detections = exemplar_frame[input_annotation_field]
+            exemplar_sample = view[exemplar_frame_ids[0]]
+            exemplar_frame = cv2.imread(exemplar_sample.filepath)
+            exemplar_detections = exemplar_sample[input_annotation_field]
 
             sample_frame = cv2.imread(sample.filepath)
             # propagated_detections = propagate_detections_no_op(sample_frame, exemplar_detections)
-            propagated_detections = propagate_detections_with_grabcut(sample_frame, exemplar_detections)
+            # propagated_detections = propagate_detections_with_grabcut(sample_frame, exemplar_detections)
             # propagated_detections = propagate_detections_with_densecrf(sample_frame, exemplar_detections)
+            propagated_detections = propagate_detections_cv2_ot(exemplar_frame, sample_frame, exemplar_detections)
             sample[output_annotation_field] = propagated_detections
             sample.save()
 
             # If the sample already has an input annotation field, evaluate against it
             if evaluate_propagation and sample[input_annotation_field]:
                 original_detections = sample[input_annotation_field]
+                # TODO(neeraja): decouple the matching and the evaluation
                 sample_score = evaluate(original_detections, propagated_detections)
                 print(f"Sample {sample.id} score: {sample_score}")
-                score += sample_score
+                scores.append(sample_score)
     
-    return score
+    return np.mean(scores)
