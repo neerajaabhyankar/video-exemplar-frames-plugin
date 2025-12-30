@@ -339,6 +339,7 @@ def setup_per_sam():
         sys.path.insert(0, personalize_sam_path)
     
     from per_segment_anything import SamPredictor
+    print(f"Successfully imported Personalize-SAM")
 
     device = "mps" if torch.backends.mps.is_available() else "cpu"
 
@@ -541,3 +542,136 @@ def propagate_segmentations_with_persam(source_frame, target_frame, source_detec
         propagated_segmentations.append(new_segmentation)
     
     return fo.Detections(detections=propagated_segmentations)
+
+
+
+# Cache for SiamFC tracker class and net_path to avoid reloading
+_siamfc_tracker_class = None
+_siamfc_net_path = None
+
+def setup_siamfc():
+    """
+    1. git clone https://github.com/huanglianghua/siamfc-pytorch.git
+    2. download siamfc_alexnet_e50.pth
+       from https://drive.google.com/file/d/1UdxuBQ1qtisoWYFZxLgMFJ9mJtGVw6n4/view?usp=sharing
+       to siamfc-weights/
+    """
+    import os
+    import sys
+    
+    global _siamfc_tracker_class, _siamfc_net_path
+    
+    # If already loaded, create new tracker instance
+    if _siamfc_tracker_class is not None and _siamfc_net_path is not None:
+        return _siamfc_tracker_class(net_path=_siamfc_net_path)
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    siamfc_path = os.path.join(current_dir, "siamfc-pytorch")
+    if not os.path.exists(siamfc_path):
+        raise FileNotFoundError(
+            f"siamfc-pytorch repository not found at {siamfc_path}. Please clone it:\n"
+            "git clone https://github.com/huanglianghua/siamfc-pytorch.git"
+        )
+    sys.path.insert(0, siamfc_path)
+    
+    from siamfc import TrackerSiamFC
+    print(f"Successfully imported SiamFC")
+    
+    # Get weights path
+    weights_path = os.path.join(current_dir, "siamfc-weights", "siamfc_alexnet_e50.pth")
+    if not os.path.exists(weights_path):
+        raise FileNotFoundError(
+            f"SiamFC weights not found at {weights_path}. "
+            "Please download siamfc_alexnet_e50.pth to siamfc-weights/"
+        )
+    
+    # Cache the class and net_path for future use
+    _siamfc_tracker_class = TrackerSiamFC
+    _siamfc_net_path = weights_path
+    
+    # Initialize tracker with net_path
+    tracker = TrackerSiamFC(net_path=weights_path)
+    print(f"Successfully initialized SiamFC tracker")
+    
+    return tracker
+
+
+def propagate_detections_with_siamese(source_frame, target_frame, source_detections):
+    """
+    Propagate detections from source_frame to target_frame using Siamese Network (SiamFC).
+    
+    Args:
+        source_frame: The source frame (numpy array, BGR format)
+        target_frame: The target frame (numpy array, BGR format)
+        source_detections: The detections from source_frame (fo.Detections)
+    
+    Returns:
+        fo.Detections: New detections for the target frame
+    """
+    source_height, source_width = source_frame.shape[:2]
+    target_height, target_width = target_frame.shape[:2]
+    
+    propagated_detections = []
+    if not hasattr(source_detections, "detections"):
+        return fo.Detections(detections=propagated_detections)
+    
+    # Convert frames to RGB (SiamFC expects RGB)
+    source_frame_rgb = cv2.cvtColor(source_frame, cv2.COLOR_BGR2RGB)
+    target_frame_rgb = cv2.cvtColor(target_frame, cv2.COLOR_BGR2RGB)
+    
+    for detection in source_detections.detections:
+        # Get bounding box from source detection and convert to pixel coordinates
+        source_bbox = detection.bounding_box
+        x1, y1, x2, y2 = normalized_bbox_to_pixel_coords(
+            source_bbox, source_width, source_height
+        )
+        
+        # Convert back to (x, y, width, height) format for SiamFC
+        # SiamFC expects 1-indexed coordinates (x, y are 1-indexed)
+        init_bbox = (
+            x1 + 1, y1 + 1, # Convert to 1-indexed
+            x2 - x1, y2 - y1,
+        )
+        
+        try:
+            # Create a new tracker instance for each detection
+            tracker = setup_siamfc()
+            
+            # Initialize tracker with source frame and bbox
+            tracker.init(source_frame_rgb, init_bbox)
+            
+            # Update tracker with target frame
+            new_bbox = tracker.update(target_frame_rgb)
+            
+            # new_bbox is in (x, y, width, height) format, 1-indexed
+            new_x, new_y, new_w, new_h = new_bbox
+            
+            # Convert from 1-indexed to 0-indexed, then to normalized coordinates
+            new_bbox_normalized = [
+                (new_x - 1) / target_width,  # Convert to 0-indexed and normalize
+                (new_y - 1) / target_height,  # Convert to 0-indexed and normalize
+                new_w / target_width,
+                new_h / target_height
+            ]
+            
+            # Ensure bbox is within image bounds
+            new_bbox_normalized[0] = max(0.0, min(new_bbox_normalized[0], 1.0))
+            new_bbox_normalized[1] = max(0.0, min(new_bbox_normalized[1], 1.0))
+            new_bbox_normalized[2] = max(0.0, min(new_bbox_normalized[2], 1.0 - new_bbox_normalized[0]))
+            new_bbox_normalized[3] = max(0.0, min(new_bbox_normalized[3], 1.0 - new_bbox_normalized[1]))
+            
+            # Create new detection
+            new_detection = fo.Detection(
+                bounding_box=new_bbox_normalized,
+                label=detection.label if hasattr(detection, 'label') else None,
+            )
+            propagated_detections.append(new_detection)
+            
+        except Exception as e:
+            print(f"Warning: SiamFC tracking failed for detection: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: use original bbox (or skip)
+            continue
+    
+    return fo.Detections(detections=propagated_detections)

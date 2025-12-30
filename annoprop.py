@@ -11,6 +11,7 @@ from annoprop_algos import (
     propagate_detections_with_densecrf, 
     propagate_detections_cv2_ot,
     propagate_segmentations_with_persam,
+    propagate_detections_with_siamese,
 )
 
 def propagate_detections_no_op(target_frame, source_detections):
@@ -57,8 +58,9 @@ def propagate_annotations(
             # propagated_detections = propagate_detections_no_op(sample_frame, exemplar_detections)
             # propagated_detections = propagate_detections_with_grabcut(sample_frame, exemplar_detections)
             # propagated_detections = propagate_detections_with_densecrf(sample_frame, exemplar_detections)
-            propagated_detections = propagate_detections_cv2_ot(exemplar_frame, sample_frame, exemplar_detections)
+            # propagated_detections = propagate_detections_cv2_ot(exemplar_frame, sample_frame, exemplar_detections)
             # propagated_detections = propagate_segmentations_with_persam(exemplar_frame, sample_frame, exemplar_detections)
+            propagated_detections = propagate_detections_with_siamese(exemplar_frame, sample_frame, exemplar_detections)
             sample[output_annotation_field] = propagated_detections
             sample.save()
 
