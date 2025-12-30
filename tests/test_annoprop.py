@@ -46,5 +46,5 @@ score = propagate_annotations(
 
 print(f"Score: {score}")
 
-session = fo.launch_app(dataset_slice)
-session.wait()
+# session = fo.launch_app(dataset_slice)
+# session.wait()

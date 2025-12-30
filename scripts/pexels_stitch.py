@@ -160,5 +160,5 @@ def stitch_videos(video_paths, output_path):
 # # Stitch videos
 if __name__ == "__main__":
     video_paths = VIDEO_PATHS
-    output_path = "stitched_basketball_videos.mp4"
+    output_path = "basketball_frames/stitched_basketball_videos.mp4"
     stitch_videos(video_paths, output_path)
