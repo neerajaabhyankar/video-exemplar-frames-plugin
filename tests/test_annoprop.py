@@ -17,7 +17,7 @@ dataset_slice = dataset.load_saved_view("side_top_layup")
 """
 For now: pick every alternate frame as an exemplar
 
-Later: "Corss-Propagation"
+Later: "Cross-Propagation"
 Choose each frame as an exemplar turn-by-turn
 And record the accuracy of the propagation from it
 """
