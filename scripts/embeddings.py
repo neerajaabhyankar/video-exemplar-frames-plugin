@@ -79,7 +79,7 @@ if __name__ == "__main__":
     dataset = compute_embeddings(
         dataset_name="basketball_frames",
         model="clip-vit-base32-torch",
-        embeddings_field="embeddings",
+        embeddings_field="embeddings_clip",
         brain_key="clip_vis",
     )
     
