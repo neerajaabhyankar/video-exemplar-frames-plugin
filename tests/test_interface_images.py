@@ -5,6 +5,7 @@ import fiftyone.operators as foo
 
 TEST_RUN_KEY = "exemplar_test_run_key"
 TEST_RESULT_OBJECT = None
+VIEW_NAME = "spinning_part1"
 
 
 @pytest.fixture
@@ -34,7 +35,9 @@ def test_extract_exemplar_frames(clean_dataset_fixture):
     global TEST_RESULT_OBJECT
     ctx1 = {
         "dataset": clean_dataset_fixture,
+        "view": clean_dataset_fixture.load_saved_view(VIEW_NAME),
         "params": {
+            "method": "zcore:embeddings_hausdorff_nbd_mds_8",
             "exemplar_frame_field": "exemplar_test",
             "max_fraction_exemplars": 0.1,
             "exemplar_run_key": TEST_RUN_KEY,
@@ -55,10 +58,11 @@ def test_extract_exemplar_frames(clean_dataset_fixture):
 def test_propagate_annotations(dataset_fixture, exemplar_result_object):
     ctx2 = {
         "dataset": dataset_fixture,
+        "view": dataset_fixture.load_saved_view(VIEW_NAME),
         "params": {
             "exemplar_run_key": exemplar_result_object.result["run_key"],
-            "input_annotation_field": "sam",
-            "output_annotation_field": "sam_propagated",
+            "input_annotation_field": "ha_test_1",
+            "output_annotation_field": "ha_test_1_propagated",
         },
     }
 
@@ -67,3 +71,5 @@ def test_propagate_annotations(dataset_fixture, exemplar_result_object):
         ctx2
     )
     print(anno_prop_result.result["message"])
+    if anno_prop_result.result["propagation_score"] is not None:
+        print(f"Average propagation score: {anno_prop_result.result['propagation_score']}")

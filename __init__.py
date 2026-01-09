@@ -33,6 +33,31 @@ class ExtractExemplarFrames(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
 
+        # exemplar extraction method
+        # TODO(neeraja): this is hacky right now, will be made cleaner
+        method_choices = [
+            "random",
+            "uniform",
+            "hdbscan:embeddings_resnet18",
+            "hdbscan:embeddings_clip",
+            "hdbscan:embeddings_hausdorff_nbd_mds_8",
+            "zcore:embeddings_resnet18",
+            "zcore:embeddings_clip",
+            "zcore:embeddings_hausdorff_nbd_mds_8",
+        ]
+        method_dropdown = types.Dropdown()
+        for choice in method_choices:
+            method_dropdown.add_choice(choice, label=choice)
+        
+        inputs.enum(
+            "method",
+            method_dropdown.values(),
+            default="random",
+            label="Exemplar Extraction Method",
+            view=method_dropdown,
+            required=True,
+        )
+
         # max fraction of exemplars to extract
         inputs.float(
             "max_fraction_exemplars",
@@ -68,11 +93,13 @@ class ExtractExemplarFrames(foo.Operator):
         max_fraction_exemplars = ctx.params.get("max_fraction_exemplars", 0.1)
         exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
         exemplar_run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
+        method = ctx.params.get("method", "random")
 
         exemplar_assignments = extract_exemplar_frames(
             view,
             max_fraction_exemplars=max_fraction_exemplars,
             exemplar_frame_field=exemplar_frame_field,
+            method=method,
         )
         
         # Store exemplar_assignments as a custom run
@@ -118,9 +145,8 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
         input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
         output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
         
-        # Now exemplar_assignments is available for use in propagation logic
-        # TODO: implement propagation logic using exemplar_assignments
-        # exemplar_assignments format: {sample_id: [exemplar_frame_ids]}
+        # TODO(neeraja): allow for (re?)computing exemplar assignments
+        # at this stage, given the annotations!
 
         propagation_score = propagate_annotations(
             view=ctx.target_view(),
@@ -131,6 +157,7 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
         )
         return {
             "propagation_score": propagation_score,
+            "message": f"Annotations propagated from {input_annotation_field} to {output_annotation_field}",
         }
 
     def resolve_input(self, ctx):

@@ -23,10 +23,10 @@ def propagate_detections_no_op(target_frame, source_detections):
 
 def propagate_annotations(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
-	exemplar_frame_field: str,
-	input_annotation_field: str,
-	output_annotation_field: str,
-	exemplar_assignments: dict,
+    exemplar_frame_field: str,
+    input_annotation_field: str,
+    output_annotation_field: str,
+    exemplar_assignments: dict,
     evaluate_propagation: Optional[bool] = True,
 ) -> None:
     """
@@ -72,4 +72,7 @@ def propagate_annotations(
                 print(f"Sample {sample.id} score: {sample_score}")
                 scores.append(sample_score)
     
-    return np.mean(scores)
+    if len(scores) > 0:
+        return np.mean(scores)
+    else:
+        return None

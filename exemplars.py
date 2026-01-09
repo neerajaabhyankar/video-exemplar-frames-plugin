@@ -12,6 +12,10 @@ def extract_exemplar_frames(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
     max_fraction_exemplars: float = 1.0,
     exemplar_frame_field: str = "exemplar",
+    method: str = "random",  # "random", "uniform",
+                             # "hdbscan:embeddings_clip", "zcore:embeddings_clip",
+                             # "zcore:embeddings_hausdorff_nbd_mds_8",
+                             # etc.
 ) -> None:
     logger.info(f"Extracting exemplar frames from {view.head(1)}")
     logger.info(f"Max fraction of exemplars: {max_fraction_exemplars}")
@@ -30,51 +34,7 @@ def extract_exemplar_frames(
 
     exemplar_assignments = {}  # {sample_id: [exemplar_frame_ids]}
 
-
-    # TODO(neeraja): use embeddings to extract exemplars
-
-    if hasattr(view.first(), "embeddings"):
-        # use embeddings to extract exemplars
-        expected_num_clusters = int(num_frames * max_fraction_exemplars)
-        expected_num_clusters = expected_num_clusters / 2  # allow for some noisy samples
-        min_cluster_size = int(num_frames / expected_num_clusters)
-
-        from sklearn.cluster import HDBSCAN
-        np.random.seed(42)
-        hdbscan = HDBSCAN(
-            min_cluster_size=min_cluster_size,
-            min_samples=3,
-            cluster_selection_epsilon=0.5,
-            store_centers="medoid",
-        )
-        hdbscan.fit(view.values("embeddings"))
-        cluster_labels = hdbscan.labels_  # these are indices
-        cluster_medoids = hdbscan.medoids_  # these are vectors
-
-        # find the sample IDs corresponding to the cluster medoids
-        # distance_matrix has rows = len(medoids) and columns = len(samples)
-        distance_matrix = np.array([np.linalg.norm(view.values("embeddings") - medoid, axis=1) for medoid in cluster_medoids])
-        sample_ids = view.values("id")
-        exemplar_sample_ids = {
-            ii: sample_ids[np.argmin(distance_matrix[ii])]
-            for ii in range(len(cluster_medoids))
-        }
-
-        for ii, sample in enumerate(view):
-            if cluster_labels[ii] == -1:
-                sample[exemplar_frame_field] = True
-                exemplar_assignments[sample.id] = [sample.id]
-            else:
-                if sample.id in exemplar_sample_ids.values():
-                    sample[exemplar_frame_field] = True
-                else:
-                    sample[exemplar_frame_field] = False
-                exemplar_assignments[sample.id] = [exemplar_sample_ids[cluster_labels[ii]]]
-            sample.save()
-
-    else:
-        # TODO(neeraja): fallback to random sampling
-
+    if method == "random":
         # first frame is an exemplar
         curr_exemplar_id = view.first().id
         for sample in view:
@@ -85,7 +45,102 @@ def extract_exemplar_frames(
                 sample[exemplar_frame_field] = False
             sample.save()
             exemplar_assignments[sample.id] = [curr_exemplar_id]
+    
+    elif method == "uniform":
+        # every (1/γ)th sample is an exemplar
+        # first frame is an exemplar
+        curr_exemplar_id = view.first().id
+        for ii, sample in enumerate(view):
+            if ii % int(num_frames / num_frames_to_extract) == 0:
+                curr_exemplar_id = sample.id
+                sample[exemplar_frame_field] = True
+            else:
+                sample[exemplar_frame_field] = False
+            sample.save()
+            exemplar_assignments[sample.id] = [curr_exemplar_id]
+    
+    else:
+        clustering_method, embedding_field = method.split(":")
 
+        if not hasattr(view.first(), embedding_field):
+            raise ValueError(f"Embedding field {embedding_field} not found in view")
+        
+        if clustering_method == "hdbscan":
+            expected_num_clusters = int(num_frames * max_fraction_exemplars)
+            expected_num_clusters = expected_num_clusters / 2  # allow for some noisy samples
+            min_cluster_size = int(num_frames / expected_num_clusters)
+
+            from sklearn.cluster import HDBSCAN
+            np.random.seed(42)
+            hdbscan = HDBSCAN(
+                min_cluster_size=min_cluster_size,
+                min_samples=3,
+                cluster_selection_epsilon=0.5,
+                store_centers="medoid",
+            )
+            hdbscan.fit(view.values(embedding_field))
+            cluster_labels = hdbscan.labels_  # these are indices
+            exemplar_vectors = hdbscan.medoids_  # these are vectors
+
+
+            # find the sample IDs corresponding to the chosen exemplars
+            # distance_matrix has rows = len(medoids) and columns = len(samples)
+            distance_matrix = np.array([np.linalg.norm(view.values(embedding_field) - exemplar_vector, axis=1) for exemplar_vector in exemplar_vectors])
+            sample_ids = view.values("id")
+            cluster_label_to_exemplar_id = {
+                ii: sample_ids[np.argmin(distance_matrix[ii])]
+                for ii in range(len(exemplar_vectors))
+            }
+
+            # populate assignments
+            for ii, sample in enumerate(view):
+                if cluster_labels[ii] == -1:
+                    sample[exemplar_frame_field] = True
+                    exemplar_assignments[sample.id] = [sample.id]
+                else:
+                    if sample.id in cluster_label_to_exemplar_id.values():
+                        sample[exemplar_frame_field] = True
+                    else:
+                        sample[exemplar_frame_field] = False
+                    exemplar_assignments[sample.id] = [cluster_label_to_exemplar_id[cluster_labels[ii]]]
+                sample.save()
+
+        elif clustering_method == "zcore":
+            import fiftyone.operators as foo
+            zcore_score_field_name = f"zcore_score_{embedding_field.replace('embeddings_', '')}"
+            ctx = {
+                "dataset": view._dataset,
+                "view": view,
+                "params": {
+                    "embeddings": embedding_field,
+                    "zcore_score_field": zcore_score_field_name,
+                },
+            }
+            foo.execute_operator("@51labs/zero-shot-coreset-selection/compute_zcore_score", ctx)
+
+            exemplar_samples = view.sort_by(
+                zcore_score_field_name, reverse=True
+            )[:num_frames_to_extract]
+            exemplar_ids = exemplar_samples.values("id")
+            exemplar_embeddings = exemplar_samples.values(embedding_field)
+
+
+            # populate assignments
+            for sample in view:
+                nnbr_index = np.argmin(
+                    np.linalg.norm(
+                        exemplar_embeddings - sample[embedding_field], axis=1
+                    )
+                )
+                nnbr_id = exemplar_ids[nnbr_index]
+                # Assign the sample to the nearest neighbor
+                if nnbr_id == sample.id:
+                    sample[exemplar_frame_field] = True
+                else:
+                    sample[exemplar_frame_field] = False
+                exemplar_assignments[sample.id] = [nnbr_id]
+                sample.save()
+    
     # # Case 2: Collection of videos
 
     # for sample in view:
