@@ -22,26 +22,29 @@ Choose each frame as an exemplar turn-by-turn
 And record the accuracy of the propagation from it
 """
 
+if "exemplar_test" in dataset_slice._dataset.get_field_schema():
+    dataset_slice._dataset.delete_sample_field("exemplar_test")
+
 # Set the exemplar frame field and assignments
-exemplar_assignments = {}
-dataset.add_sample_field("exemplar_frame", fo.BooleanField)
-exemplar_id = None
+exemplar_id = dataset_slice.first().id
 for ii, sample in enumerate(dataset_slice.sort_by("frame_number")):
     if ii % 2 == 0:
-        sample["exemplar_frame"] = True
+        is_exemplar = True
         exemplar_id = sample.id
     else:
-        sample["exemplar_frame"] = False
-    exemplar_assignments[sample.id] = [exemplar_id]
+        is_exemplar = False
+    sample["exemplar_test"] = {
+        "is_exemplar": is_exemplar,
+        "exemplar_assignment": [exemplar_id] if not is_exemplar else []
+    }
     sample.save()
 
 
 score = propagate_annotations(
     dataset_slice,
-	exemplar_frame_field="exemplar_frame", 
+	exemplar_frame_field="exemplar_test", 
 	input_annotation_field="ha_test_1",
 	output_annotation_field="ha_test_1_propagated",
-	exemplar_assignments=exemplar_assignments,
 )
 
 print(f"Score: {score}")

@@ -32,19 +32,20 @@ def extract_exemplar_frames(
     num_frames_to_extract = int(num_frames * max_fraction_exemplars)
     logger.info(f"Number of frames to extract: {num_frames_to_extract}")
 
-    exemplar_assignments = {}  # {sample_id: [exemplar_frame_ids]}
-
     if method == "random":
         # first frame is an exemplar
         curr_exemplar_id = view.first().id
         for sample in view:
             if random.random() < max_fraction_exemplars:
                 curr_exemplar_id = sample.id
-                sample[exemplar_frame_field] = True
+                is_exemplar = True
             else:
-                sample[exemplar_frame_field] = False
+                is_exemplar = False
+            sample[exemplar_frame_field] = fo.DynamicEmbeddedDocument(
+                is_exemplar=is_exemplar,
+                exemplar_assignment=[curr_exemplar_id] if not is_exemplar else []
+            )
             sample.save()
-            exemplar_assignments[sample.id] = [curr_exemplar_id]
     
     elif method == "uniform":
         # every (1/γ)th sample is an exemplar
@@ -53,11 +54,14 @@ def extract_exemplar_frames(
         for ii, sample in enumerate(view):
             if ii % int(num_frames / num_frames_to_extract) == 0:
                 curr_exemplar_id = sample.id
-                sample[exemplar_frame_field] = True
+                is_exemplar = True
             else:
-                sample[exemplar_frame_field] = False
+                is_exemplar = False
+            sample[exemplar_frame_field] = fo.DynamicEmbeddedDocument(
+                is_exemplar=is_exemplar,
+                exemplar_assignment=[curr_exemplar_id] if not is_exemplar else []
+            )
             sample.save()
-            exemplar_assignments[sample.id] = [curr_exemplar_id]
     
     else:
         clustering_method, embedding_field = method.split(":")
@@ -95,14 +99,17 @@ def extract_exemplar_frames(
             # populate assignments
             for ii, sample in enumerate(view):
                 if cluster_labels[ii] == -1:
-                    sample[exemplar_frame_field] = True
-                    exemplar_assignments[sample.id] = [sample.id]
+                    is_exemplar = True
+                    assignment = []
                 else:
                     if sample.id in cluster_label_to_exemplar_id.values():
-                        sample[exemplar_frame_field] = True
+                        is_exemplar = True
                     else:
-                        sample[exemplar_frame_field] = False
-                    exemplar_assignments[sample.id] = [cluster_label_to_exemplar_id[cluster_labels[ii]]]
+                        is_exemplar = False
+                sample[exemplar_frame_field] = fo.DynamicEmbeddedDocument(
+                    is_exemplar=is_exemplar,
+                    exemplar_assignment=[cluster_label_to_exemplar_id[cluster_labels[ii]]] if not is_exemplar else []
+                )
                 sample.save()
 
         elif clustering_method == "zcore":
@@ -134,11 +141,11 @@ def extract_exemplar_frames(
                 )
                 nnbr_id = exemplar_ids[nnbr_index]
                 # Assign the sample to the nearest neighbor
-                if nnbr_id == sample.id:
-                    sample[exemplar_frame_field] = True
-                else:
-                    sample[exemplar_frame_field] = False
-                exemplar_assignments[sample.id] = [nnbr_id]
+                is_exemplar = (nnbr_id == sample.id)
+                sample[exemplar_frame_field] = fo.DynamicEmbeddedDocument(
+                    is_exemplar=is_exemplar,
+                    exemplar_assignment=[nnbr_id] if not is_exemplar else []
+                )
                 sample.save()
     
     # # Case 2: Collection of videos
@@ -150,4 +157,4 @@ def extract_exemplar_frames(
     #         else:
     #             frame[exemplar_frame_field] = False
 
-    return exemplar_assignments
+    return

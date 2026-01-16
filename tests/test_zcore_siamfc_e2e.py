@@ -182,15 +182,14 @@ def assign_to_nearest_neighbor_exemplar(
     exemplar_samples,
     embedding_field,
     exemplar_indicator_field,
-) -> dict:
+):
     """
     Assign each sample to the nearest neighbor among the exemplars.
     The NN is defined by the embedding in the provided embedding_field.
     """
     if exemplar_indicator_field not in all_samples.first().field_names:
-        all_samples._dataset.add_sample_field(exemplar_indicator_field, fo.BooleanField)
+        all_samples._dataset.add_sample_field(exemplar_indicator_field, fo.DictField)
 
-    exemplar_assignments = {}
     exemplar_ids = exemplar_samples.values("id")
     exemplar_embeddings = exemplar_samples.values(embedding_field)
     for sample in all_samples:
@@ -202,37 +201,40 @@ def assign_to_nearest_neighbor_exemplar(
         nnbr_id = exemplar_ids[nnbr_index]
         # Assign the sample to the nearest neighbor
         if nnbr_id == sample.id:
-            sample[exemplar_indicator_field] = True
+            is_exemplar = True
         else:
-            sample[exemplar_indicator_field] = False
-        exemplar_assignments[sample.id] = [nnbr_id]
+            is_exemplar = False
+        sample[exemplar_indicator_field] = {
+            "is_exemplar": is_exemplar,
+            "exemplar_assignment": [nnbr_id] if not is_exemplar else []
+        }
     
     all_samples.save()
-    return all_samples, exemplar_assignments
+    return all_samples
 
 
-dataset_slice, uniform_assignments = assign_to_nearest_neighbor_exemplar(
+dataset_slice = assign_to_nearest_neighbor_exemplar(
     dataset_slice,
     uniform_samples,
     embedding_field_name,
     "exemplar_uniform",
 )
 
-dataset_slice, random_assignments = assign_to_nearest_neighbor_exemplar(
+dataset_slice = assign_to_nearest_neighbor_exemplar(
     dataset_slice,
     random_samples,
     embedding_field_name,
     "exemplar_random",
 )
 
-dataset_slice, zcore_hausdorff_assignments = assign_to_nearest_neighbor_exemplar(
+dataset_slice = assign_to_nearest_neighbor_exemplar(
     dataset_slice,
     zcore_hausdorff_samples,
     embedding_field_name,
     "exemplar_zcore_hausdorff",
 )
 
-dataset_slice, zcore_clip_assignments = assign_to_nearest_neighbor_exemplar(
+dataset_slice = assign_to_nearest_neighbor_exemplar(
     dataset_slice,
     zcore_clip_samples,
     embedding_field_name,
@@ -246,7 +248,6 @@ uniform_score = propagate_annotations(
     exemplar_frame_field="exemplar_uniform",
     input_annotation_field="ha_test_1",
     output_annotation_field="ha_test_1_propagated",
-    exemplar_assignments=uniform_assignments,
 )
 print(f"Uniform score: {uniform_score}")
 
@@ -255,7 +256,6 @@ random_score = propagate_annotations(
     exemplar_frame_field="exemplar_random",
     input_annotation_field="ha_test_1",
     output_annotation_field="ha_test_1_propagated",
-    exemplar_assignments=random_assignments,
 )
 print(f"Random score: {random_score}")
 
@@ -264,7 +264,6 @@ zcore_clip_score = propagate_annotations(
     exemplar_frame_field="exemplar_zcore_clip",
     input_annotation_field="ha_test_1",
     output_annotation_field="ha_test_1_propagated",
-    exemplar_assignments=zcore_clip_assignments,
 )
 print(f"ZCore Clip score: {zcore_clip_score}")
 
@@ -273,6 +272,5 @@ zcore_hausdorff_score = propagate_annotations(
     exemplar_frame_field="exemplar_zcore_hausdorff",
     input_annotation_field="ha_test_1",
     output_annotation_field="ha_test_1_propagated",
-    exemplar_assignments=zcore_hausdorff_assignments,
 )
 print(f"ZCore Hausdorff score: {zcore_hausdorff_score}")

@@ -26,28 +26,25 @@ def propagate_annotations(
     exemplar_frame_field: str,
     input_annotation_field: str,
     output_annotation_field: str,
-    exemplar_assignments: dict,
     evaluate_propagation: Optional[bool] = True,
 ) -> None:
     """
     Propagate annotations from exemplar frames to all the frames.
     Args:
         view: The view to propagate annotations from
-        exemplar_frame_field: The field name of the exemplar frame
-                              TODO(neeraja): Explore whether we can remove this field
-        annotation_field: The field name of the annotation to copy from the exemplar frame
+        exemplar_frame_field: The field name in which the exemplar frame assignments are stored
+        input_annotation_field: The field name of the annotation to copy from the exemplar frame field
         output_annotation_field: The field name of the annotation to save to the target frame
-        exemplar_assignments: {sample_id: [exemplar_frame_ids]} for each sample in the view
         evaluate_propagation: Whether to evaluate the propagation against
                               the input annotation field present in the propagation targets.
     """
     scores = []
 
     for sample in view:
-        if sample[exemplar_frame_field]:
+        if sample[exemplar_frame_field]["is_exemplar"]:
             sample[output_annotation_field] = sample[input_annotation_field]
-        elif (sample.id in exemplar_assignments) and (len(exemplar_assignments[sample.id]) > 0):
-            exemplar_frame_ids = exemplar_assignments[sample.id]
+        elif len(sample[exemplar_frame_field]["exemplar_assignment"]) > 0:
+            exemplar_frame_ids = sample[exemplar_frame_field]["exemplar_assignment"]
 
             # TODO(neeraja): handle multiple exemplar frames for the same sample
             exemplar_sample = view[exemplar_frame_ids[0]]
@@ -62,7 +59,6 @@ def propagate_annotations(
             # propagated_detections = propagate_segmentations_with_persam(exemplar_frame, sample_frame, exemplar_detections)
             propagated_detections = propagate_detections_with_siamese(exemplar_frame, sample_frame, exemplar_detections)
             sample[output_annotation_field] = propagated_detections
-            sample.save()
 
             # If the sample already has an input annotation field, evaluate against it
             if evaluate_propagation and sample[input_annotation_field]:
@@ -71,6 +67,7 @@ def propagate_annotations(
                 sample_score = evaluate(original_detections, propagated_detections)
                 print(f"Sample {sample.id} score: {sample_score}")
                 scores.append(sample_score)
+        sample.save()
     
     if len(scores) > 0:
         return np.mean(scores)

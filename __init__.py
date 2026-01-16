@@ -72,18 +72,18 @@ class ExtractExemplarFrames(foo.Operator):
         # exemplar frame field
         inputs.str(
             "exemplar_frame_field",
-            label="Exemplar Frame Field (indicator field)",
+            label="Exemplar Frame Information Field",
             default="exemplar",
             required=True,
         )
 
-        # brain key
-        inputs.str(
-            "exemplar_run_key",
-            label="Brain Key for Exemplar Frame Extraction",
-            default="extract_exemplar_frames",
-            required=True,
-        )
+        # # brain key
+        # inputs.str(
+        #     "exemplar_run_key",
+        #     label="Brain Key for Exemplar Frame Extraction",
+        #     default="extract_exemplar_frames",
+        #     required=True,
+        # )
 
         return types.Property(inputs)
     
@@ -92,30 +92,48 @@ class ExtractExemplarFrames(foo.Operator):
         view = ctx.target_view()
         max_fraction_exemplars = ctx.params.get("max_fraction_exemplars", 0.1)
         exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
-        exemplar_run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
+        # exemplar_run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
         method = ctx.params.get("method", "random")
 
-        exemplar_assignments = extract_exemplar_frames(
+        # Check if field exists and validate/convert its type
+        dataset = ctx.dataset
+        if exemplar_frame_field in dataset.get_field_schema():
+            field_type_name = type(dataset.get_field_schema()[exemplar_frame_field]).__name__
+            if field_type_name != "EmbeddedDocumentField":
+                dataset.delete_sample_field(exemplar_frame_field)
+        
+        # Ensure the exemplar field exists and declare nested fields for proper schema support
+        # Use DynamicEmbeddedDocument to allow dynamic fields
+        if exemplar_frame_field not in dataset.get_field_schema():
+            dataset.add_sample_field(
+                exemplar_frame_field, 
+                fo.EmbeddedDocumentField,
+                embedded_doc_type=fo.DynamicEmbeddedDocument
+            )
+            dataset.add_sample_field(f"{exemplar_frame_field}.is_exemplar", fo.BooleanField)
+            dataset.add_sample_field(
+                f"{exemplar_frame_field}.exemplar_assignment", 
+                fo.ListField, subfield=fo.ObjectIdField
+            )
+
+        extract_exemplar_frames(
             view,
             max_fraction_exemplars=max_fraction_exemplars,
             exemplar_frame_field=exemplar_frame_field,
             method=method,
         )
         
-        # Store exemplar_assignments as a custom run
-        config = ctx.dataset.init_run()
-        config.max_fraction_exemplars = max_fraction_exemplars
-        config.exemplar_frame_field = exemplar_frame_field
-        ctx.dataset.register_run(exemplar_run_key, config, overwrite=True, cleanup=False)
-        # TODO(neeraja): run cleanup should involve deleting the exemplar_frame_field
-        
-        results = ctx.dataset.init_run_results(exemplar_run_key)
-        results.exemplar_assignments = exemplar_assignments
-        ctx.dataset.save_run_results(exemplar_run_key, results, overwrite=True)
+        # # Store as a custom run
+        # config = ctx.dataset.init_run()
+        # config.max_fraction_exemplars = max_fraction_exemplars
+        # config.exemplar_frame_field = exemplar_frame_field
+        # ctx.dataset.register_run(exemplar_run_key, config, overwrite=True, cleanup=False)
+        # # TODO(neeraja): run cleanup should involve deleting the exemplar_frame_field
+        # results = ctx.dataset.init_run_results(exemplar_run_key)
+        # ctx.dataset.save_run_results(exemplar_run_key, results, overwrite=True)
         
         return {
-            "run_key": exemplar_run_key,
-            "message": f"Exemplar frames extracted and stored in run '{exemplar_run_key}'",
+            "message": f"Exemplar frames extracted and stored in field '{exemplar_frame_field}'",
         }
 
 class PropagateAnnotationsFromExemplars(foo.Operator):
@@ -130,30 +148,31 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
         )
 
     def execute(self, ctx):
-        run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
-        
-        # Load the exemplar_assignments from the custom run
-        try:
-            results = ctx.dataset.load_run_results(run_key)
-            exemplar_assignments = results.exemplar_assignments
-            run_info = ctx.dataset.get_run_info(run_key)
-            stored_exemplar_frame_field = run_info.config.exemplar_frame_field
-        except Exception as e:
-            raise ValueError(f"Could not load exemplar run '{run_key}': {e}. "
-                           f"Make sure you have run 'extract_exemplar_frames' first.")
-        
+        # run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
+        # # Load the exemplar_assignments from the custom run
+        # try:
+        #     run_info = ctx.dataset.get_run_info(run_key)
+        #     stored_exemplar_frame_field = run_info.config.exemplar_frame_field
+        # except Exception as e:
+        #     raise ValueError(f"Could not load exemplar run '{run_key}': {e}. "
+        #                    f"Make sure you have run 'extract_exemplar_frames' first.")
+
+        exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
+
         input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
         output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
+
+        if output_annotation_field == input_annotation_field:
+            raise ValueError("Output annotation field cannot be the same as the input annotation field")
         
         # TODO(neeraja): allow for (re?)computing exemplar assignments
         # at this stage, given the annotations!
 
         propagation_score = propagate_annotations(
             view=ctx.target_view(),
-            exemplar_frame_field=stored_exemplar_frame_field,
+            exemplar_frame_field=exemplar_frame_field,
             input_annotation_field=input_annotation_field,
             output_annotation_field=output_annotation_field,
-            exemplar_assignments=exemplar_assignments,
         )
         return {
             "propagation_score": propagation_score,
@@ -163,41 +182,48 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
 
-        # Check if there are any extract_exemplar_frames runs
-        available_runs = ctx.dataset.list_runs()
-        available_runs = [
-            rr
-            for rr in available_runs
-            if hasattr(ctx.dataset.get_run_info(rr).config, "exemplar_frame_field")
-        ]
+        # # Check if there are any extract_exemplar_frames runs
+        # available_runs = ctx.dataset.list_runs()
+        # available_runs = [
+        #     rr
+        #     for rr in available_runs
+        #     if hasattr(ctx.dataset.get_run_info(rr).config, "exemplar_frame_field")
+        # ]
 
-        if len(available_runs) > 0:
-            run_dropdown = types.Dropdown()
-            for run_key in available_runs:
-                try:
-                    run_info = ctx.dataset.get_run_info(run_key)
-                    # Create a label from the run info
-                    timestamp = run_info.get("timestamp", "unknown")
-                    exemplar_field = run_info.get("config", {}).get("exemplar_frame_field", "unknown")
-                    # Format timestamp for display (just date and time, no microseconds)
-                    if timestamp != "unknown":
-                        timestamp = timestamp.split(".")[0].replace("T", " ")
-                    label = f"{run_key} ({exemplar_field}, {timestamp})"
-                    run_dropdown.add_choice(run_key, label=label)
-                except Exception:
-                    # Fallback if we can't get run info
-                    run_dropdown.add_choice(run_key, label=run_key)
+        # if len(available_runs) > 0:
+        #     run_dropdown = types.Dropdown()
+        #     for run_key in available_runs:
+        #         try:
+        #             run_info = ctx.dataset.get_run_info(run_key)
+        #             # Create a label from the run info
+        #             timestamp = run_info.get("timestamp", "unknown")
+        #             exemplar_field = run_info.get("config", {}).get("exemplar_frame_field", "unknown")
+        #             # Format timestamp for display (just date and time, no microseconds)
+        #             if timestamp != "unknown":
+        #                 timestamp = timestamp.split(".")[0].replace("T", " ")
+        #             label = f"{run_key} ({exemplar_field}, {timestamp})"
+        #             run_dropdown.add_choice(run_key, label=label)
+        #         except Exception:
+        #             # Fallback if we can't get run info
+        #             run_dropdown.add_choice(run_key, label=run_key)
             
-            inputs.enum(
-                "exemplar_run_key",
-                run_dropdown.values(),
-                default=available_runs[0] if available_runs else None,
-                label="Exemplar Extraction Run Key",
-                view=run_dropdown,
-                required=True,
-            )
-        else:
-            raise ValueError("No exemplar extraction runs found. Please run 'extract_exemplar_frames' first.")
+        #     inputs.enum(
+        #         "exemplar_run_key",
+        #         run_dropdown.values(),
+        #         default=available_runs[0] if available_runs else None,
+        #         label="Exemplar Extraction Run Key",
+        #         view=run_dropdown,
+        #         required=True,
+        #     )
+        # else:
+        #     raise ValueError("No exemplar extraction runs found. Please run 'extract_exemplar_frames' first.")
+
+        inputs.str(
+            "exemplar_frame_field",
+            label="Exemplar Frame Information Field",
+            default="exemplar",
+            required=True,
+        )
 
         inputs.str(
             "input_annotation_field",
