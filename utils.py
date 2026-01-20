@@ -122,3 +122,27 @@ def evaluate_matched(original_detections, propagated_detections):
     for od, pd in zip(original_detections.detections, propagated_detections.detections):
         total_iou += box_iou(od, pd)
     return total_iou / len(original_detections.detections)
+
+
+def evaluate_success_rate_matched(original_detections, propagated_detections):
+    """
+    The success plot represents the percentage of frames for which the IoU exceeds a threshold,
+    with respect to different thresholds.
+    The area under the success plot is taken as an overall success measure.
+    """
+    # TODO(neeraja): implement for masks
+    if len(original_detections.detections) == 0 or len(propagated_detections.detections) == 0:
+        return 0.0
+    
+    assert len(original_detections.detections) == len(propagated_detections.detections)
+
+    ious = []
+    for od, pd in zip(original_detections.detections, propagated_detections.detections):
+        ious.append(box_iou(od, pd))
+    ious = sorted(ious)[::-1]
+    
+    area_under_curve = 0
+    for ii, iou in enumerate(ious):
+        area_under_curve += iou * (ii + 1)/len(ious)
+    
+    return area_under_curve
