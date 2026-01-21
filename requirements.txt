@@ -2,5 +2,6 @@ fiftyone>=1.11.0
 numpy
 opencv-python
 scipy
+scikit-learn>=1.0.0
 gdown
 git+https://github.com/neerajaabhyankar/siamfc-pytorch.git

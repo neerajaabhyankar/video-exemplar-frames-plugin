@@ -1,6 +1,7 @@
 import pytest
 import fiftyone as fo
 import fiftyone.operators as foo
+import numpy as np
 
 
 VIEW_NAME = "spinning_part1"
@@ -55,5 +56,7 @@ def test_propagate_annotations(dataset_fixture):
         ctx2
     )
     print(anno_prop_result.result["message"])
-    if anno_prop_result.result["propagation_score"] is not None:
-        print(f"Average propagation score: {anno_prop_result.result['propagation_score']}")
+    for sample_id, score in anno_prop_result.result["propagation_score"].items():
+        print(f"Sample {sample_id} score: {score}")
+    if len(anno_prop_result.result["propagation_score"]) > 0:
+        print(f"Average propagation score: {np.mean(list(anno_prop_result.result['propagation_score'].values()))}")

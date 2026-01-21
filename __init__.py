@@ -1,17 +1,16 @@
-"""Image Redaction plugin.
+"""Video Exemplar Frames plugin.
+
+Extract exemplar frames from a video dataset and propagate annotations.
 
 | Copyright 2025, Voxel51, Inc.
 | `voxel51.com <https://voxel51.com/>`
 """
 
 import os
-import re
 
 import fiftyone as fo
-import fiftyone.zoo as foz
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
-import fiftyone.utils.transformers as fout
 from fiftyone.core.utils import add_sys_path
 
 with add_sys_path(os.path.dirname(os.path.abspath(__file__))):
@@ -21,7 +20,7 @@ with add_sys_path(os.path.dirname(os.path.abspath(__file__))):
 
 class ExtractExemplarFrames(foo.Operator):
     @property
-    def config(self):
+    def config(self) -> foo.OperatorConfig:
         return foo.OperatorConfig(
             name="extract_exemplar_frames", 
             label="Extract Exemplar Frames Operator",
@@ -77,22 +76,12 @@ class ExtractExemplarFrames(foo.Operator):
             required=True,
         )
 
-        # # brain key
-        # inputs.str(
-        #     "exemplar_run_key",
-        #     label="Brain Key for Exemplar Frame Extraction",
-        #     default="extract_exemplar_frames",
-        #     required=True,
-        # )
-
         return types.Property(inputs)
     
-    def execute(self, ctx):
+    def execute(self, ctx) -> dict:
         ctx.dataset.persistent = True  # Required for custom runs
-        view = ctx.target_view()
         max_fraction_exemplars = ctx.params.get("max_fraction_exemplars", 0.1)
         exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
-        # exemplar_run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
         method = ctx.params.get("method", "random")
 
         # Check if field exists and validate/convert its type
@@ -117,20 +106,11 @@ class ExtractExemplarFrames(foo.Operator):
             )
 
         extract_exemplar_frames(
-            view,
+            ctx.target_view(),
             max_fraction_exemplars=max_fraction_exemplars,
             exemplar_frame_field=exemplar_frame_field,
             method=method,
         )
-        
-        # # Store as a custom run
-        # config = ctx.dataset.init_run()
-        # config.max_fraction_exemplars = max_fraction_exemplars
-        # config.exemplar_frame_field = exemplar_frame_field
-        # ctx.dataset.register_run(exemplar_run_key, config, overwrite=True, cleanup=False)
-        # # TODO(neeraja): run cleanup should involve deleting the exemplar_frame_field
-        # results = ctx.dataset.init_run_results(exemplar_run_key)
-        # ctx.dataset.save_run_results(exemplar_run_key, results, overwrite=True)
         
         return {
             "message": f"Exemplar frames extracted and stored in field '{exemplar_frame_field}'",
@@ -138,7 +118,7 @@ class ExtractExemplarFrames(foo.Operator):
 
 class PropagateAnnotationsFromExemplars(foo.Operator):
     @property
-    def config(self):
+    def config(self) -> foo.OperatorConfig:
         return foo.OperatorConfig(
             name="propagate_annotations_from_exemplars",
             label="Propagate Annotations From Exemplars Operator",
@@ -148,22 +128,17 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
         )
 
     def execute(self, ctx):
-        # run_key = ctx.params.get("exemplar_run_key", "extract_exemplar_frames")
-        # # Load the exemplar_assignments from the custom run
-        # try:
-        #     run_info = ctx.dataset.get_run_info(run_key)
-        #     stored_exemplar_frame_field = run_info.config.exemplar_frame_field
-        # except Exception as e:
-        #     raise ValueError(f"Could not load exemplar run '{run_key}': {e}. "
-        #                    f"Make sure you have run 'extract_exemplar_frames' first.")
-
         exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
 
         input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
         output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
 
         if output_annotation_field == input_annotation_field:
-            raise ValueError("Output annotation field cannot be the same as the input annotation field")
+            raise ValueError(
+                f"Output annotation field '{output_annotation_field}' cannot be the same as "
+                f"the input annotation field '{input_annotation_field}'. "
+                f"Please choose a different output field name to avoid overwriting the source annotations."
+            )
         
         # TODO(neeraja): allow for (re?)computing exemplar assignments
         # at this stage, given the annotations!
@@ -179,45 +154,9 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             "message": f"Annotations propagated from {input_annotation_field} to {output_annotation_field}",
         }
 
-    def resolve_input(self, ctx):
+    def resolve_input(self, ctx) -> types.Property:
         inputs = types.Object()
-
-        # # Check if there are any extract_exemplar_frames runs
-        # available_runs = ctx.dataset.list_runs()
-        # available_runs = [
-        #     rr
-        #     for rr in available_runs
-        #     if hasattr(ctx.dataset.get_run_info(rr).config, "exemplar_frame_field")
-        # ]
-
-        # if len(available_runs) > 0:
-        #     run_dropdown = types.Dropdown()
-        #     for run_key in available_runs:
-        #         try:
-        #             run_info = ctx.dataset.get_run_info(run_key)
-        #             # Create a label from the run info
-        #             timestamp = run_info.get("timestamp", "unknown")
-        #             exemplar_field = run_info.get("config", {}).get("exemplar_frame_field", "unknown")
-        #             # Format timestamp for display (just date and time, no microseconds)
-        #             if timestamp != "unknown":
-        #                 timestamp = timestamp.split(".")[0].replace("T", " ")
-        #             label = f"{run_key} ({exemplar_field}, {timestamp})"
-        #             run_dropdown.add_choice(run_key, label=label)
-        #         except Exception:
-        #             # Fallback if we can't get run info
-        #             run_dropdown.add_choice(run_key, label=run_key)
-            
-        #     inputs.enum(
-        #         "exemplar_run_key",
-        #         run_dropdown.values(),
-        #         default=available_runs[0] if available_runs else None,
-        #         label="Exemplar Extraction Run Key",
-        #         view=run_dropdown,
-        #         required=True,
-        #     )
-        # else:
-        #     raise ValueError("No exemplar extraction runs found. Please run 'extract_exemplar_frames' first.")
-
+        
         inputs.str(
             "exemplar_frame_field",
             label="Exemplar Frame Information Field",

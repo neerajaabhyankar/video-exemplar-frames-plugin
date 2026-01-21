@@ -12,10 +12,7 @@ def extract_exemplar_frames(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
     max_fraction_exemplars: float = 1.0,
     exemplar_frame_field: str = "exemplar",
-    method: str = "random",  # "random", "uniform",
-                             # "hdbscan:embeddings_clip", "zcore:embeddings_clip",
-                             # "zcore:embeddings_hausdorff_nbd_mds_8",
-                             # etc.
+    method: str = "random",
 ) -> None:
     logger.info(f"Extracting exemplar frames from {view.head(1)}")
     logger.info(f"Max fraction of exemplars: {max_fraction_exemplars}")
@@ -27,10 +24,23 @@ def extract_exemplar_frames(
     # get the number of frames in the view
     num_frames = view.count()
     logger.info(f"Number of samples in view: {num_frames}")
+    
+    if num_frames == 0:
+        raise ValueError(
+            "The view has no samples. Please select samples or adjust your view filters "
+            "before extracting exemplar frames."
+        )
 
     # get the number of frames to extract
     num_frames_to_extract = int(num_frames * max_fraction_exemplars)
     logger.info(f"Number of frames to extract: {num_frames_to_extract}")
+    
+    if num_frames_to_extract == 0:
+        raise ValueError(
+            f"With max_fraction_exemplars={max_fraction_exemplars} and {num_frames} samples, "
+            f"no exemplar frames would be extracted. Please increase max_fraction_exemplars "
+            f"(minimum: {1.0 / num_frames if num_frames > 0 else 0.01:.4f})."
+        )
 
     if method == "random":
         # first frame is an exemplar
@@ -65,9 +75,22 @@ def extract_exemplar_frames(
     
     else:
         clustering_method, embedding_field = method.split(":")
+        
+        if clustering_method not in ["hdbscan", "zcore"]:
+            raise ValueError(
+                f"Unknown clustering method '{clustering_method}'. "
+                f"Supported methods: 'hdbscan', 'zcore'. "
+                f"Format: '{clustering_method}:embedding_field'."
+            )
 
         if not hasattr(view.first(), embedding_field):
-            raise ValueError(f"Embedding field {embedding_field} not found in view")
+            available_fields = list(view.first().get_field_schema().keys())
+            raise ValueError(
+                f"Embedding field '{embedding_field}' not found in the dataset. "
+                f"Available fields: {', '.join(available_fields[:10])}{'...' if len(available_fields) > 10 else ''}. "
+                f"Please compute embeddings first using a brain run or embedding operator (e.g., "
+                f"'@voxel51/brain/compute_visualization' or '@voxel51/zoo/compute_embeddings')."
+            )
         
         if clustering_method == "hdbscan":
             expected_num_clusters = int(num_frames * max_fraction_exemplars)

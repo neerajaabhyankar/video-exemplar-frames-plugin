@@ -1,9 +1,12 @@
 from typing import Tuple, Union, Optional
+import logging
 import numpy as np
 import cv2
 from scipy.optimize import linear_sum_assignment
 
 import fiftyone as fo
+
+logger = logging.getLogger(__name__)
 
 from utils import fit_mask_to_bbox, normalized_bbox_to_pixel_coords, evaluate, evaluate_matched
 from annoprop_algos import (
@@ -15,9 +18,19 @@ from annoprop_algos import (
     propagate_detections_with_swintrack,
 )
 
-def propagate_detections_no_op(target_frame, source_detections):
+def propagate_detections_no_op(
+    target_frame: np.ndarray,
+    source_detections: fo.Detections,
+) -> fo.Detections:
     """
     Propagate detections as-is (Do nothing).
+    
+    Args:
+        target_frame: Target frame image (unused, kept for API consistency)
+        source_detections: Source detections to propagate
+        
+    Returns:
+        The source detections unchanged
     """
     return source_detections
 
@@ -28,7 +41,7 @@ def propagate_annotations(
     input_annotation_field: str,
     output_annotation_field: str,
     evaluate_propagation: Optional[bool] = True,
-) -> None:
+) -> dict[str, float]:
     """
     Propagate annotations from exemplar frames to all the frames.
     Args:
@@ -39,7 +52,7 @@ def propagate_annotations(
         evaluate_propagation: Whether to evaluate the propagation against
                               the input annotation field present in the propagation targets.
     """
-    scores = []
+    scores = {}
 
     for sample in view:
         if sample[exemplar_frame_field]["is_exemplar"]:
@@ -67,11 +80,8 @@ def propagate_annotations(
                 original_detections = sample[input_annotation_field]
                 # TODO(neeraja): decouple the matching and the evaluation
                 sample_score = evaluate(original_detections, propagated_detections)
-                print(f"Sample {sample.id} score: {sample_score}")
-                scores.append(sample_score)
+                logger.debug(f"Sample {sample.id} score: {sample_score}")
+                scores[sample.id] = sample_score
         sample.save()
     
-    if len(scores) > 0:
-        return np.mean(scores)
-    else:
-        return None
+    return scores
