@@ -93,55 +93,7 @@ dataset_slice = assign_to_nearest_neighbor_exemplar(
     "exemplar_single",
 )
 
-
-def propagate_annotations_dict(
-    view,
-    exemplar_frame_field: str,
-    input_annotation_field: str,
-    output_annotation_field: str,
-    evaluate_propagation = True,
-) -> dict:
-    """
-    Propagate annotations from exemplar frames to all the frames.
-    Args:
-        view: The view to propagate annotations from
-        exemplar_frame_field: The field name of the exemplar frame
-                              TODO(neeraja): Explore whether we can remove this field
-        annotation_field: The field name of the annotation to copy from the exemplar frame
-        output_annotation_field: The field name of the annotation to save to the target frame
-        exemplar_assignments: {sample_id: [exemplar_frame_ids]} for each sample in the view
-        evaluate_propagation: Whether to evaluate the propagation against
-                              the input annotation field present in the propagation targets.
-    """
-    scores = {}
-
-    for sample in view:
-        if sample[exemplar_frame_field]["is_exemplar"]:
-            sample[output_annotation_field] = sample[input_annotation_field]
-        elif len(sample[exemplar_frame_field]["exemplar_assignment"]) > 0:
-            exemplar_frame_ids = sample[exemplar_frame_field]["exemplar_assignment"]
-
-            # TODO(neeraja): handle multiple exemplar frames for the same sample
-            exemplar_sample = view[exemplar_frame_ids[0]]
-            exemplar_frame = cv2.imread(exemplar_sample.filepath)
-            exemplar_detections = exemplar_sample[input_annotation_field]
-
-            sample_frame = cv2.imread(sample.filepath)
-            propagated_detections = propagate_detections_with_siamese(exemplar_frame, sample_frame, exemplar_detections)
-            sample[output_annotation_field] = propagated_detections
-            sample.save()
-
-            # If the sample already has an input annotation field, evaluate against it
-            if evaluate_propagation and sample[input_annotation_field]:
-                original_detections = sample[input_annotation_field]
-                # TODO(neeraja): decouple the matching and the evaluation
-                sample_score = evaluate(original_detections, propagated_detections)
-                scores[sample.id] = sample_score
-    
-    return scores
-
-
-score_dict = propagate_annotations_dict(
+score_dict = propagate_annotations(
     dataset_slice,
     exemplar_frame_field="exemplar_single",
     input_annotation_field="ha_test_1",
@@ -170,14 +122,6 @@ resnet18_distances = [
     for sample in dataset_slice
     if sample.id in score_dict
 ]
-
-# plt.scatter(sorted_scores, siamfc_distances, c="seagreen")  
-# plt.scatter(sorted_scores, resnet18_distances, c="lightcoral")
-# plt.scatter(sorted_scores, clip_distances, c="orchid")
-# plt.xlabel("Propagation IoU Score")
-# plt.ylabel("Distance to Exemplar in SiamFC Embedding Space")
-# plt.title("Distances in Propagatability Space v/s Score")
-# plt.show()
 
 
 # Compute correlation coefficients for the three distances

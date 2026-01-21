@@ -47,7 +47,8 @@ score = propagate_annotations(
 	output_annotation_field="ha_test_1_propagated",
 )
 
-print(f"Score: {score}")
+for sample_id, score in score.items():
+    print(f"Sample {sample_id} score: {score}")
 
 session = fo.launch_app(dataset_slice)
 session.wait()
