@@ -1,0 +1,6 @@
+fiftyone>=1.11.0
+numpy
+opencv-python
+scipy
+gdown
+git+https://github.com/neerajaabhyankar/siamfc-pytorch.git

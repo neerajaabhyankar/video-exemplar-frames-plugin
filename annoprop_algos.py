@@ -551,10 +551,24 @@ _siamfc_net_path = None
 
 def setup_siamfc():
     """
-    1. git clone https://github.com/huanglianghua/siamfc-pytorch.git
-    2. download siamfc_alexnet_e50.pth
-       from https://drive.google.com/file/d/1UdxuBQ1qtisoWYFZxLgMFJ9mJtGVw6n4/view?usp=sharing
-       to siamfc-weights/
+    Setup SiamFC tracker. 
+    
+    Installation options:
+    1. (Recommended) Install via pip:
+       pip install git+https://github.com/neerajaabhyankar/siamfc-pytorch.git
+       
+       Then download weights to the installed package location:
+       - Find the installed location:
+         python -c 'import siamfc; import os; print(os.path.dirname(os.path.abspath(siamfc.__file__)))'
+       - Download siamfc_alexnet_e50.pth from:
+         https://drive.google.com/file/d/1UdxuBQ1qtisoWYFZxLgMFJ9mJtGVw6n4/view?usp=sharing
+       - Place it in <installed_location>/weights/
+       
+    2. Or use local installation (for development):
+       - Clone the repository locally
+       - Download siamfc_alexnet_e50.pth from:
+         https://drive.google.com/file/d/1UdxuBQ1qtisoWYFZxLgMFJ9mJtGVw6n4/view?usp=sharing
+       - Place it in siamfc-pytorch/weights/
     """
     import os
     import sys
@@ -565,24 +579,47 @@ def setup_siamfc():
     if _siamfc_tracker_class is not None and _siamfc_net_path is not None:
         return _siamfc_tracker_class(net_path=_siamfc_net_path)
     
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    siamfc_path = os.path.join(current_dir, "siamfc-pytorch")
-    if not os.path.exists(siamfc_path):
-        raise FileNotFoundError(
-            f"siamfc-pytorch repository not found at {siamfc_path}. Please clone it:\n"
-            "git clone https://github.com/huanglianghua/siamfc-pytorch.git"
-        )
-    sys.path.insert(0, siamfc_path)
+    # Try importing from installed package first
+    try:
+        from siamfc import TrackerSiamFC
+        print("Successfully imported SiamFC from installed package")
+        installed_package = True
+    except ImportError:
+        # Fallback to local path for dev
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        siamfc_path = os.path.join(current_dir, "siamfc-pytorch")
+        if not os.path.exists(siamfc_path):
+            raise ImportError(
+                "siamfc-pytorch not found. Please install it:\n"
+                "pip install git+https://github.com/neerajaabhyankar/siamfc-pytorch.git\n"
+                f"Or ensure local repository exists at {siamfc_path}"
+            )
+        sys.path.insert(0, siamfc_path)
+        from siamfc import TrackerSiamFC
+        print("Successfully imported SiamFC from local path")
+        installed_package = False
     
-    from siamfc import TrackerSiamFC
-    print(f"Successfully imported SiamFC")
+    # Get weights path from the installed package location first
+    weights_path = None
     
-    # Get weights path
-    weights_path = os.path.join(current_dir, "siamfc-weights", "siamfc_alexnet_e50.pth")
+    if installed_package:
+        # Try to find weights in installed package location
+        import siamfc
+        package_dir = os.path.dirname(os.path.abspath(siamfc.__file__))
+        weights_path = os.path.join(package_dir, "weights", "siamfc_alexnet_e50.pth")
+        weights_path = os.path.abspath(weights_path)
+    
+    # Fall back to local path for dev
+    if not weights_path or not os.path.exists(weights_path):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        weights_path = os.path.join(current_dir, "siamfc-pytorch", "weights", "siamfc_alexnet_e50.pth")
+    
     if not os.path.exists(weights_path):
         raise FileNotFoundError(
             f"SiamFC weights not found at {weights_path}. "
-            "Please download siamfc_alexnet_e50.pth to siamfc-weights/"
+            "Please download siamfc_alexnet_e50.pth from:\n"
+            "https://drive.google.com/file/d/1UdxuBQ1qtisoWYFZxLgMFJ9mJtGVw6n4/view?usp=sharing\n"
+            "and place it in the weights/ directory."
         )
     
     # Cache the class and net_path for future use
