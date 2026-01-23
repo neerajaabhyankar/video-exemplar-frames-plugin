@@ -7,6 +7,7 @@ Extract exemplar frames from a video dataset and propagate annotations.
 """
 
 import os
+import logging
 from datetime import datetime
 
 import fiftyone as fo
@@ -17,6 +18,21 @@ from fiftyone.core.utils import add_sys_path
 with add_sys_path(os.path.dirname(os.path.abspath(__file__))):
     from exemplars import extract_exemplar_frames
     from annoprop import propagate_annotations
+
+logger = logging.getLogger(__name__)
+
+if not logger.handlers:
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    log_file = os.path.join(log_dir, "debug.log")
+    os.makedirs(log_dir, exist_ok=True)
+
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.DEBUG)
 
 
 class ExtractExemplarFrames(foo.Operator):
@@ -39,15 +55,6 @@ class ExtractExemplarFrames(foo.Operator):
 
     def resolve_input(self, ctx) -> types.Property:
         inputs = types.Object()
-        
-        # # Validate view has samples
-        # # TODO(neeraja): Do I need this? Test
-        # if len(ctx.view) == 0:
-        #     inputs.view("warning", types.Warning(
-        #         label="Empty View",
-        #         description="The current view has no samples. Please select samples or adjust your view filters before extracting exemplar frames."
-        #     ))
-        #     return types.Property(inputs)
         
         # # Warn for large datasets
         # if len(ctx.view) > 1000:
@@ -109,9 +116,8 @@ class ExtractExemplarFrames(foo.Operator):
     #     if len(view) < 100:
     #         return False
     #     return True
-    
+
     def execute(self, ctx) -> dict:
-        # breakpoint()
         # Make dataset persistent if possible (required for custom runs)
         try:
             ctx.dataset.persistent = True
@@ -127,13 +133,16 @@ class ExtractExemplarFrames(foo.Operator):
         # Check if field exists and validate/convert its type
         dataset = ctx.dataset
         if exemplar_frame_field in dataset.get_field_schema():
+            logger.debug(f"Exemplar frame field exists: {exemplar_frame_field}")
             field_type_name = type(dataset.get_field_schema()[exemplar_frame_field]).__name__
             if field_type_name != "EmbeddedDocumentField":
+                logger.debug(f"Deleting exemplar frame field of incorrect type: {exemplar_frame_field}")
                 dataset.delete_sample_field(exemplar_frame_field)
         
         # Ensure the exemplar field exists and declare nested fields for proper schema support
         # Use DynamicEmbeddedDocument to allow dynamic fields
         if exemplar_frame_field not in dataset.get_field_schema():
+            logger.info(f"Adding exemplar frame field: {exemplar_frame_field}")
             dataset.add_sample_field(
                 exemplar_frame_field, 
                 fo.EmbeddedDocumentField,
@@ -153,7 +162,8 @@ class ExtractExemplarFrames(foo.Operator):
             exemplar_frame_field=exemplar_frame_field,
             method=method,
         )
-        
+        logger.info(f"Exemplar frames extracted and stored in field '{exemplar_frame_field}'")
+
         # TODO(neeraja): move this to a separate function
         
         # Generate run key following convention: <namespace>/<operator>/<version>/<timestamp>
@@ -189,10 +199,15 @@ class ExtractExemplarFrames(foo.Operator):
                 # First time; register an alias
                 run_info = ctx.dataset.get_run_info(run_key)
                 ctx.dataset.register_run(latest_key, run_info.config)
+            
+            logger.info(f"Custom extract_exemplar_frames run stored: {run_key}")
         except Exception as e:
             # Custom runs not available (e.g., in test context or non-persistent dataset)
             # Continue without failing
             pass
+
+        if exemplar_frame_field not in dataset.get_field_schema():
+            logger.warning(f"Exemplar frame field {exemplar_frame_field} not found in dataset")
         
         return {
             "message": f"Exemplar frames extracted and stored in field '{exemplar_frame_field}'",
@@ -228,39 +243,18 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
     #     return True
 
     def execute(self, ctx) -> dict:
+        if not self.validate_input(ctx):
+            return {
+                "message": "Validation failed",
+                "samples_processed": 0,
+                "samples_evaluated": 0,
+            }
+        
         view = ctx.target_view()
         total_samples = len(view)
         exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
         input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
         output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
-        
-
-        if output_annotation_field == input_annotation_field:
-            raise ValueError(
-                f"Output annotation field '{output_annotation_field}' cannot be the same as "
-                f"the input annotation field '{input_annotation_field}'. "
-                f"Please choose a different output field name to avoid overwriting the source annotations."
-            )
-        
-        # # Validate that exemplar_frame_field exists
-        # # TODO(neeraja): Do I need this? Test
-        # if exemplar_frame_field not in ctx.dataset.get_field_schema():
-        #     available_fields = list(ctx.dataset.get_field_schema().keys())
-        #     raise ValueError(
-        #         f"Exemplar frame field '{exemplar_frame_field}' not found in the dataset. "
-        #         f"Available fields: {', '.join(available_fields[:10])}{'...' if len(available_fields) > 10 else ''}. "
-        #         f"Please run 'extract_exemplar_frames' first to create exemplar assignments."
-        #     )
-        
-        # # Validate that input_annotation_field exists
-        # # TODO(neeraja): Do I need this? Test
-        # if input_annotation_field not in ctx.dataset.get_field_schema():
-        #     available_fields = list(ctx.dataset.get_field_schema().keys())
-        #     raise ValueError(
-        #         f"Input annotation field '{input_annotation_field}' not found in the dataset. "
-        #         f"Available fields: {', '.join(available_fields[:10])}{'...' if len(available_fields) > 10 else ''}. "
-        #         f"Please ensure the field exists and contains annotations."
-        #     )
         
         # TODO(neeraja): allow for (re?)computing exemplar assignments
         # at this stage, given the annotations!
@@ -273,6 +267,10 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             input_annotation_field=input_annotation_field,
             output_annotation_field=output_annotation_field,
         )
+        logger.info(f"Annotations propagated from {input_annotation_field} to {output_annotation_field}")
+        logger.info(f"Propagation scores available for {len(propagation_scores)} samples")
+        if len(propagation_scores) > 0:
+            logger.info(f"Mean propagation score: {sum(propagation_scores.values()) / len(propagation_scores)}")
         
         # Generate run key following convention: <namespace>/<operator>/<version>/<timestamp>
         plugin_namespace = "@neerajaabhyankar/video-exemplar-frames-plugin"
@@ -311,6 +309,8 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
                 # First time; register an alias
                 run_info = ctx.dataset.get_run_info(run_key)
                 ctx.dataset.register_run(latest_key, run_info.config)
+
+            logger.info(f"Custom propagate_annotations_from_exemplars run stored: {run_key}")
         except Exception as e:
             # Custom runs not available (e.g., in test context or non-persistent dataset)
             # Continue without failing
@@ -320,38 +320,12 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             "propagation_score": propagation_scores,
             "message": f"Annotations propagated from {input_annotation_field} to {output_annotation_field}",
             "samples_processed": total_samples,
-            "num_evaluated": len(propagation_scores),
+            "samples_evaluated": len(propagation_scores),
             "run_key": run_key,
         }
 
     def resolve_input(self, ctx) -> types.Property:
         inputs = types.Object()
-
-        # # TODO(neeraja): Do I need this? Test
-        
-        # # Validate view has samples
-        # if len(ctx.view) == 0:
-        #     inputs.view("warning", types.Warning(
-        #         label="Empty View",
-        #         description="The current view has no samples. Please select samples or adjust your view filters before propagating annotations."
-        #     ))
-        #     return types.Property(inputs)
-        
-        # # Warn for large datasets
-        # if len(ctx.view) > 1000:
-        #     inputs.view("warning", types.Warning(
-        #         label="Large Dataset",
-        #         description=f"This operation will process {len(ctx.view)} samples and may take a long time."
-        #     ))
-    
-        
-        # # Check if exemplar_frame_field exists
-        # exemplar_fields = [f for f in schema.keys() if "exemplar" in f.lower() or f == "exemplar"]
-        # if not exemplar_fields:
-        #     inputs.view("warning", types.Warning(
-        #         label="No Exemplar Field Found",
-        #         description="No exemplar frame field found in the dataset. Please run 'extract_exemplar_frames' first."
-        #     ))
 
         # Get available fields from dataset schema for autocomplete
         schema = ctx.dataset.get_field_schema()
@@ -377,12 +351,49 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             "output_annotation_field",
             label="Annotation Field to Propagate to",
             default="human_labels_propagated",
-            view=types.AutocompleteView(choices=field_choices) if field_choices else None,
             required=True,
         )
 
         return types.Property(inputs)
 
+    def validate_input(self, ctx) -> bool:
+        exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
+        input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
+        output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
+
+        if output_annotation_field == input_annotation_field:
+            logger.warning(
+                f"Output annotation field '{output_annotation_field}' cannot be the same as "
+                f"the input annotation field '{input_annotation_field}'. "
+                f"Please choose a different output field name to avoid overwriting the source annotations."
+            )
+            return False
+        
+        schema = ctx.dataset.get_field_schema()
+        if exemplar_frame_field not in schema:
+            logger.warning(
+                f"Exemplar frame field '{exemplar_frame_field}' not found in the dataset. "
+                f"Please run 'extract_exemplar_frames' first."
+            )
+            return False
+        elif (type(schema[exemplar_frame_field]) != fo.EmbeddedDocumentField) or \
+            ("is_exemplar" not in schema[exemplar_frame_field].get_field_schema()) or \
+            (type(schema[exemplar_frame_field].get_field_schema()["is_exemplar"]) != fo.BooleanField) or \
+            ("exemplar_assignment" not in schema[exemplar_frame_field].get_field_schema()):
+            logger.warning(
+                f"Exemplar frame field '{exemplar_frame_field}' is not of the correct type. "
+                f"Please run 'extract_exemplar_frames' first."
+            )
+            return False
+        
+        if input_annotation_field not in schema:
+            logger.warning(
+                f"Input annotation field '{input_annotation_field}' not found in the dataset. "
+                f"Please ensure the field exists and contains annotations."
+            )
+            return False
+        
+        return True
 
 def register(p):
     p.register(ExtractExemplarFrames)

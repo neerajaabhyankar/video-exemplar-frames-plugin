@@ -24,23 +24,13 @@ def extract_exemplar_frames(
     # get the number of frames in the view
     num_frames = view.count()
     logger.info(f"Number of samples in view: {num_frames}")
-    
-    if num_frames == 0:
-        raise ValueError(
-            "The view has no samples. Please select samples or adjust your view filters "
-            "before extracting exemplar frames."
-        )
 
     # get the number of frames to extract
     num_frames_to_extract = int(num_frames * max_fraction_exemplars)
     logger.info(f"Number of frames to extract: {num_frames_to_extract}")
     
-    if num_frames_to_extract == 0:
-        raise ValueError(
-            f"With max_fraction_exemplars={max_fraction_exemplars} and {num_frames} samples, "
-            f"no exemplar frames would be extracted. Please increase max_fraction_exemplars "
-            f"(minimum: {1.0 / num_frames if num_frames > 0 else 0.01:.4f})."
-        )
+    if (num_frames == 0) or (num_frames_to_extract == 0):
+        logger.warning(f"Attempting to extract {num_frames_to_extract} exemplar frames from {num_frames} samples.")
 
     if method == "random":
         # first frame is an exemplar
