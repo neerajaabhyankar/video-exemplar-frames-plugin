@@ -7,6 +7,7 @@ from scipy.optimize import linear_sum_assignment
 import fiftyone as fo
 
 logger = logging.getLogger(__name__)
+cv2.setNumThreads(1)
 
 from utils import fit_mask_to_bbox, normalized_bbox_to_pixel_coords, evaluate, evaluate_matched
 from annoprop_algos import (
@@ -52,9 +53,7 @@ def propagate_annotations(
         evaluate_propagation: Whether to evaluate the propagation against
                               the input annotation field present in the propagation targets.
     """
-    scores = {}
-
-    for sample in view:
+    def process_sample(sample):
         if sample[exemplar_frame_field]["is_exemplar"]:
             sample[output_annotation_field] = sample[input_annotation_field]
         elif len(sample[exemplar_frame_field]["exemplar_assignment"]) > 0:
@@ -81,7 +80,11 @@ def propagate_annotations(
                 # TODO(neeraja): decouple the matching and the evaluation
                 sample_score = evaluate(original_detections, propagated_detections)
                 logger.debug(f"Sample {sample.id} score: {sample_score}")
-                scores[sample.id] = sample_score
+                return sample_score
         sample.save()
+        return None
+
+    results = view.map_samples(process_sample, num_workers=1)
+    scores = {sample_id: score for sample_id, score in results if score is not None}
     
     return scores
