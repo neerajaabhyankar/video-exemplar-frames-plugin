@@ -9,7 +9,8 @@ import fiftyone as fo
 logger = logging.getLogger(__name__)
 cv2.setNumThreads(1)
 
-from utils import fit_mask_to_bbox, normalized_bbox_to_pixel_coords, evaluate, evaluate_matched
+from utils import evaluate, evaluate_success_rate
+from embedding_utils import propagatability_pre_label, propagatability_post_label
 from annoprop_algos import (
     propagate_detections_with_grabcut, 
     propagate_detections_with_densecrf, 
@@ -82,6 +83,41 @@ def propagate_annotations(
                 logger.debug(f"Sample {sample.id} score: {sample_score}")
                 return sample_score
         sample.save()
+        return None
+
+    results = view.map_samples(process_sample, num_workers=1)
+    scores = {sample_id: score for sample_id, score in results if score is not None}
+    
+    return scores
+
+
+def estimate_propagatability(
+    view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
+    exemplar_frame_field: str,
+    input_annotation_field: str,
+) -> dict[str, float]:
+    """
+    Estimate the propagatability of the annotations from the exemplar frames to the target frames.
+    Args:
+        view: The view to propagate annotations from
+        exemplar_frame_field: The field name in which the exemplar frame assignments are stored
+        input_annotation_field: The field name of the annotation to copy from the exemplar frame field
+    """
+    def process_sample(sample):
+        if (not sample[exemplar_frame_field]["is_exemplar"]) and \
+        (len(sample[exemplar_frame_field]["exemplar_assignment"]) > 0):
+            exemplar_frame_ids = sample[exemplar_frame_field]["exemplar_assignment"]
+
+            # TODO(neeraja): handle multiple exemplar frames for the same sample
+            exemplar_sample = view[exemplar_frame_ids[0]]
+            exemplar_frame = cv2.imread(exemplar_sample.filepath)
+            exemplar_detections = exemplar_sample[input_annotation_field]
+            sample_frame = cv2.imread(sample.filepath)
+
+            propagatability_score = propagatability_pre_label(exemplar_frame, sample_frame)
+            # propagatability_score = propagatability_post_label(exemplar_frame, sample_frame, exemplar_detections)
+            return propagatability_score
+        
         return None
 
     results = view.map_samples(process_sample, num_workers=1)

@@ -96,8 +96,6 @@ def evaluate(original_detections, propagated_detections):
 
     total_iou = 0.0
     for i, j in zip(row_ind, col_ind):
-        # area_p = propagated_detections[j]["bounding_box"][2] * propagated_detections[j]["bounding_box"][3]
-        # area_gt = original_detections[i]["bounding_box"][2] * original_detections[i]["bounding_box"][3]
         total_iou += iou_matrix[i, j]
 
     # Unmatched predictions/ground_truths contribute IoU = 0 implicitly
@@ -122,6 +120,45 @@ def evaluate_matched(original_detections, propagated_detections):
     for od, pd in zip(original_detections.detections, propagated_detections.detections):
         total_iou += box_iou(od, pd)
     return total_iou / len(original_detections.detections)
+
+
+def evaluate_success_rate(original_detections, propagated_detections):
+    """
+    The success plot represents the percentage of frames for which the IoU exceeds a threshold,
+    with respect to different thresholds.
+    The area under the success plot is taken as an overall success measure.
+    Args:
+        original_detections: The original detections
+        propagated_detections: The propagated detections
+    Returns:
+        float: The evaluation score
+    """
+    # TODO(neeraja): implement for masks
+    G = len(original_detections.detections)
+    P = len(propagated_detections.detections)
+
+    if min(G, P) == 0:
+        return 0.0
+
+    # IoU matrix: shape (G, P)
+    iou_matrix = np.zeros((G, P), dtype=np.float32)
+    for i, gt in enumerate(original_detections.detections):
+        for j, pred in enumerate(propagated_detections.detections):
+            iou_matrix[i, j] = box_iou(gt, pred)
+
+    # Hungarian finds MIN cost → negate IoU
+    row_ind, col_ind = linear_sum_assignment(-iou_matrix)
+
+    ious = []
+    for i, j in zip(row_ind, col_ind):
+        ious.append(iou_matrix[i, j])
+    ious = sorted(ious)[::-1]
+    
+    area_under_curve = 0
+    for ii, iou in enumerate(ious):
+        area_under_curve += iou * (ii + 1)/len(ious)
+    
+    return area_under_curve / max(G, P)
 
 
 def evaluate_success_rate_matched(original_detections, propagated_detections):

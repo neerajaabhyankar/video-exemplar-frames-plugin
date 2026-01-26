@@ -1,0 +1,206 @@
+import pytest
+import numpy as np
+import sys
+from pathlib import Path
+
+import fiftyone.zoo as foz
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils import (
+    fit_mask_to_bbox,
+    normalized_bbox_to_pixel_coords,
+    box_iou,
+    evaluate,
+    evaluate_matched,
+    evaluate_success_rate,
+    evaluate_success_rate_matched,
+)
+from embedding_utils import compute_hausdorff_mds_embedding_siamfc
+
+
+class TestBasicUtils:
+    def test_fit_mask_to_bbox(self):
+        # Test case: mask smaller than bbox_size (should pad)
+        mask_small = np.array([[1, 0], [0, 0]])
+        bbox_size = (5, 5)
+        result = fit_mask_to_bbox(mask_small, bbox_size)
+        assert result.shape == (5, 5)
+        assert np.array_equal(result[:2, :2], mask_small)
+        assert np.all(result[2:, :] == 0)
+        assert np.all(result[:, 2:] == 0)
+        
+        # Test case: mask larger than bbox_size (should crop)
+        mask_large = np.ones((10, 10))
+        bbox_size = (5, 5)
+        result = fit_mask_to_bbox(mask_large, bbox_size)
+        assert result.shape == (5, 5)
+        assert np.all(result == 1)
+        
+        # Test case: smaller in 1 dim, larger in another dim
+        mask_mixed = np.ones((2, 10))
+        bbox_size = (5, 3)
+        result = fit_mask_to_bbox(mask_mixed, bbox_size)
+        assert result.shape == (5, 3)
+        assert np.all(result[:2, :3] == 1)  # Original mask portion
+        assert np.all(result[2:, :] == 0)  # Padded portion
+    
+    def test_normalized_bbox_to_pixel_coords(self):
+        # Test case: normal case
+        bbox = [0.1, 0.2, 0.3, 0.4]
+        image_width, image_height = 200, 100
+        x1, y1, ww, hh = normalized_bbox_to_pixel_coords(bbox, image_width, image_height)
+        assert x1 == 20
+        assert y1 == 20
+        assert ww == 80
+        assert hh == 60
+        
+        # Test case: box spilling out of the image
+        bbox = [0.9, 0.8, 0.3, 0.3]
+        image_width, image_height = 200, 100
+        x1, y1, ww, hh = normalized_bbox_to_pixel_coords(bbox, image_width, image_height)
+        assert x1 == 180
+        assert y1 == 80
+        assert ww == 200
+        assert hh == 100
+    
+    def test_box_iou(self):
+        # Test case: overlapping boxes
+        box_a = {"bounding_box": [0.1, 0.1, 0.2, 0.2]}
+        box_b = {"bounding_box": [0.2, 0.2, 0.2, 0.2]}
+        iou = box_iou(box_a, box_b)
+        assert 0 < iou < 1
+        assert abs(iou - 1/7) < 1e-6
+        
+        # Test case: non-overlapping boxes
+        box_a = {"bounding_box": [0.1, 0.1, 0.2, 0.2]}
+        box_b = {"bounding_box": [0.3, 0.3, 0.2, 0.2]}
+        iou = box_iou(box_a, box_b)
+        assert iou < 1e-6
+        
+        # Test case: identical boxes
+        box_a = {"bounding_box": [0.1, 0.3, 0.2, 0.2]}
+        box_b = {"bounding_box": [0.1, 0.3, 0.2, 0.2]}
+        iou = box_iou(box_a, box_b)
+        assert abs(iou - 1) < 1e-6
+
+
+class MockDetections:
+    """Mock object to simulate detections with .detections attribute"""
+    def __init__(self, detections):
+        self.detections = detections
+
+
+class TestEvalMetrics:
+    def test_evaluate(self):
+        # Test case: one of the lists empty
+        original = MockDetections([])
+        propagated = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        score = evaluate(original, propagated)
+        assert score == 0.0
+        # Also test the other way around
+        original = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        propagated = MockDetections([])
+        score = evaluate(original, propagated)
+        assert score == 0.0
+
+        # Test case: both lists have 1 object each (overlapping)
+        original = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        propagated = MockDetections([{"bounding_box": [0.2, 0.2, 0.2, 0.2]}])
+        score = evaluate(original, propagated)
+        assert abs(score - 1/7) < 1e-6
+        
+        # Test case: original_detections has 1 object, propagated has 2 (one overlapping mostly)
+        original = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        propagated = MockDetections([
+            {"bounding_box": [0.35, 0.35, 0.2, 0.2]},
+            {"bounding_box": [0.11, 0.11, 0.2, 0.2]},
+        ])
+        score = evaluate(original, propagated)
+        assert 0 < score < 0.5  # ~0.4112
+
+    def test_evaluate_matched(self):
+        # Test case: both lists have 2 object each, one mostly overlapping
+        original = MockDetections([
+            {"bounding_box": [0.1, 0.1, 0.2, 0.2]},
+            {"bounding_box": [0.5, 0.6, 0.2, 0.2]},
+        ])
+        propagated = MockDetections([
+            {"bounding_box": [0.11, 0.11, 0.2, 0.2]},
+            {"bounding_box": [0.8, 0.6, 0.2, 0.2]},
+        ])
+        score = evaluate_matched(original, propagated)
+        assert 0 < score < 0.5
+        
+        # Test case: swapped order
+        original = MockDetections([
+            {"bounding_box": [0.1, 0.1, 0.2, 0.2]},
+            {"bounding_box": [0.5, 0.6, 0.2, 0.2]},
+        ])
+        propagated = MockDetections([
+            {"bounding_box": [0.8, 0.6, 0.2, 0.2]},
+            {"bounding_box": [0.11, 0.11, 0.2, 0.2]},
+        ])
+        score = evaluate_matched(original, propagated)
+        assert score < 1e-6
+
+    def test_evaluate_success_rate(self):
+        # Test case: one of the lists empty
+        original = MockDetections([])
+        propagated = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        score = evaluate_success_rate(original, propagated)
+        assert score == 0.0
+        # Also test the other way around
+        original = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        propagated = MockDetections([])
+        score = evaluate_success_rate(original, propagated)
+        assert score == 0.0
+
+        # Test case: both lists have 1 object each (overlapping)
+        original = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        propagated = MockDetections([{"bounding_box": [0.2, 0.2, 0.2, 0.2]}])
+        score = evaluate_success_rate(original, propagated)
+        assert abs(score - 1/7) < 1e-6
+        
+        # Test case: original_detections has 1 object, propagated has 2 (one overlapping mostly)
+        original = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
+        propagated = MockDetections([
+            {"bounding_box": [0.35, 0.35, 0.2, 0.2]},
+            {"bounding_box": [0.11, 0.11, 0.2, 0.2]},
+        ])
+        score = evaluate_success_rate(original, propagated)
+        assert 0 < score < 0.5
+
+    def test_evaluate_success_rate_matched(self):
+        # Test case: both lists have 2 object each, one mostly overlapping
+        original = MockDetections([
+            {"bounding_box": [0.1, 0.1, 0.2, 0.2]},
+            {"bounding_box": [0.5, 0.6, 0.2, 0.2]},
+        ])
+        propagated = MockDetections([
+            {"bounding_box": [0.11, 0.11, 0.2, 0.2]},
+            {"bounding_box": [0.8, 0.6, 0.2, 0.2]},
+        ])
+        score = evaluate_success_rate_matched(original, propagated)
+        assert 0 < score < 0.5
+        
+        # Test case: swapped order
+        original = MockDetections([
+            {"bounding_box": [0.1, 0.1, 0.2, 0.2]},
+            {"bounding_box": [0.5, 0.6, 0.2, 0.2]},
+        ])
+        propagated = MockDetections([
+            {"bounding_box": [0.8, 0.6, 0.2, 0.2]},
+            {"bounding_box": [0.11, 0.11, 0.2, 0.2]},
+        ])
+        score = evaluate_success_rate_matched(original, propagated)
+        assert score < 1e-6
+
+
+class TestEmbeddingUtils:
+    def test_compute_hausdorff_mds_embedding_siamfc(self):
+        # Test case: compute the Hausdorff MDS embedding for a small dataset
+        dataset = foz.load_zoo_dataset("quickstart")
+        dataset_slice = dataset.take(10)
+        compute_hausdorff_mds_embedding_siamfc(dataset_slice, "embeddings_test")
+        assert dataset_slice.has_field("embeddings_test")
+        assert np.array(dataset_slice.values("embeddings_test")).shape == (10, 8)

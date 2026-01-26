@@ -50,12 +50,6 @@ def propagate_detections_with_grabcut(target_frame, source_detections):
             source_bbox, target_width, target_height
         )
         
-        # Ensure coordinates are within image bounds
-        x1 = max(0, min(x1, target_width - 1))
-        y1 = max(0, min(y1, target_height - 1))
-        x2 = max(x1 + 1, min(x2, target_width))
-        y2 = max(y1 + 1, min(y2, target_height))
-        
         # Get the mask from the source segmentation
         source_mask = detection.mask
 

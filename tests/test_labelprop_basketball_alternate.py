@@ -2,12 +2,14 @@ import pytest
 import sys
 from pathlib import Path
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import spearmanr, pearsonr
 
 import fiftyone as fo
 import fiftyone.operators as foo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from annoprop import propagate_annotations
+from annoprop import propagate_annotations, estimate_propagatability
 
 
 @pytest.fixture
@@ -50,3 +52,39 @@ def test_labelprop_basketball(exemplar_assigned_dataset_slice):
         print(f"Sample {sample_id} score: {sample_score}")
     
     assert np.mean(list(score.values())) > 0.4
+
+
+def test_propagatability_basketball(exemplar_assigned_dataset_slice):
+    score_estimate = estimate_propagatability(
+        exemplar_assigned_dataset_slice,
+        exemplar_frame_field="exemplar_test",
+        input_annotation_field="ha_test_1",
+    )
+    score = propagate_annotations(
+        exemplar_assigned_dataset_slice,
+        exemplar_frame_field="exemplar_test",
+        input_annotation_field="ha_test_1",
+        output_annotation_field="ha_test_1_propagated",
+    )
+    # Align dicts on common sample IDs
+    common_ids = sorted(set(score_estimate.keys()) & set(score.keys()))
+    est_array = np.array([score_estimate[_id] for _id in common_ids], dtype=float)
+    true_array = np.array([score[_id] for _id in common_ids], dtype=float)
+
+    # Correlations (no assertions for now)
+    spearman_corr, spearman_p = spearmanr(est_array, true_array)
+    pearson_corr, pearson_p = pearsonr(est_array, true_array)
+
+    print("Correlation between estimated and true propagation scores:")
+    print(f"  Spearman: {spearman_corr:.3f} (p={spearman_p:.4f})")
+    print(f"  Pearson:  {pearson_corr:.3f} (p={pearson_p:.4f})")
+
+    # Scatter plot: estimate vs true
+    plt.figure(figsize=(5, 4))
+    plt.scatter(est_array, true_array, alpha=0.6, c="steelblue")
+    plt.xlabel("Estimated Propagatability")
+    plt.ylabel("True Propagation Score")
+    plt.title(f"Estimate vs True (Spearman: {spearman_corr:.3f})")
+    plt.grid(True, alpha=0.7)
+    plt.tight_layout()
+    plt.show()
