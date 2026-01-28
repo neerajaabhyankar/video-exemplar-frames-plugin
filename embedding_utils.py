@@ -7,7 +7,7 @@ import logging
 import fiftyone as fo
 
 from utils import normalized_bbox_to_pixel_coords
-from annoprop_algos import setup_siamfc
+from annoprop_algos import PropagatorSiamFC
 
 fo.config.database_validation = False
 logger = logging.getLogger(__name__)
@@ -46,7 +46,8 @@ def compute_backbone_embeddings_siamfc(frames: Union[fo.core.collections.SampleC
         Embeddings numpy array of shape (NN, DD, HH, WW)
         where NN is the number of frames, DD is the embedding dimension, HH, WW are the spatial dimensions.
     """
-    tracker = setup_siamfc()
+    propagator = PropagatorSiamFC()
+    tracker = propagator.setup_siamfc()
     _ = tracker.net.eval()
     
     def compute_embedding(frame) -> np.ndarray:
