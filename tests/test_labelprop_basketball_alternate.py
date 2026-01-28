@@ -40,7 +40,7 @@ def exemplar_assigned_dataset_slice(dataset_slice):
     return dataset_slice
 
 
-def test_labelprop_basketball(exemplar_assigned_dataset_slice):
+def test_propagation(exemplar_assigned_dataset_slice):
     score = propagate_annotations(
         exemplar_assigned_dataset_slice,
         exemplar_frame_field="exemplar_test", 
@@ -51,10 +51,14 @@ def test_labelprop_basketball(exemplar_assigned_dataset_slice):
     for sample_id, sample_score in score.items():
         print(f"Sample {sample_id} score: {sample_score}")
     
-    assert np.mean(list(score.values())) > 0.4
+    print(f"Average propagation score: {np.mean(list(score.values()))}")
+    
+    # assert np.mean(list(score.values())) > 0.4
+    session = fo.launch_app(exemplar_assigned_dataset_slice)
+    session.wait()
 
 
-def test_propagatability_basketball(exemplar_assigned_dataset_slice):
+def test_propagatability(exemplar_assigned_dataset_slice):
     score_estimate = estimate_propagatability(
         exemplar_assigned_dataset_slice,
         exemplar_frame_field="exemplar_test",

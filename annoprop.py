@@ -71,9 +71,10 @@ def propagate_annotations(
             # propagated_detections = propagate_detections_with_densecrf(sample_frame, exemplar_detections)
             # propagated_detections = propagate_detections_cv2_ot(exemplar_frame, sample_frame, exemplar_detections)
             # propagated_detections = propagate_segmentations_with_persam(exemplar_frame, sample_frame, exemplar_detections)
-            propagated_detections = propagate_detections_with_siamese(exemplar_frame, sample_frame, exemplar_detections)
-            # propagated_detections = propagate_detections_with_swintrack(exemplar_frame, sample_frame, exemplar_detections)
+            # propagated_detections = propagate_detections_with_siamese(exemplar_frame, sample_frame, exemplar_detections)
+            propagated_detections = propagate_detections_with_swintrack(exemplar_frame, sample_frame, exemplar_detections)
             sample[output_annotation_field] = propagated_detections
+            sample.save()
 
             # If the sample already has an input annotation field, evaluate against it
             if evaluate_propagation and sample[input_annotation_field]:
@@ -82,7 +83,7 @@ def propagate_annotations(
                 sample_score = evaluate(original_detections, propagated_detections)
                 logger.debug(f"Sample {sample.id} score: {sample_score}")
                 return sample_score
-        sample.save()
+        
         return None
 
     results = view.map_samples(process_sample, num_workers=1)

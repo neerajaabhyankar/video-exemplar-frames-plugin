@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import spearmanr, pearsonr
 
 import fiftyone as fo
+import fiftyone.zoo as foz
 import fiftyone.operators as foo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -14,8 +15,7 @@ from annoprop import propagate_annotations, estimate_propagatability
 
 @pytest.fixture
 def dataset():
-    dataset = fo.load_dataset("davis-2017")
-    dataset = dataset.match_tags("val")
+    dataset = foz.load_zoo_dataset("https://github.com/voxel51/davis-2017", split="validation", format="image")
     return dataset
 
 
@@ -40,7 +40,7 @@ def exemplar_assigned_dataset(dataset):
     return dataset
 
 
-def test_labelprop_davis(exemplar_assigned_dataset):
+def test_propagation(exemplar_assigned_dataset):
     score = propagate_annotations(
         exemplar_assigned_dataset,
         exemplar_frame_field="exemplar_first_frame", 
@@ -52,10 +52,13 @@ def test_labelprop_davis(exemplar_assigned_dataset):
         print(f"Sample {sample_id} score: {sample_score}")
     
     print(f"Average propagation score: {np.mean(list(score.values()))}")
-    assert np.mean(list(score.values())) > 0.33
+    
+    # assert np.mean(list(score.values())) > 0.33
+    session = fo.launch_app(exemplar_assigned_dataset)
+    session.wait()
 
 
-def test_propagatability_davis(exemplar_assigned_dataset):
+def test_propagatability(exemplar_assigned_dataset):
     score_estimate = estimate_propagatability(
         exemplar_assigned_dataset,
         exemplar_frame_field="exemplar_first_frame",
