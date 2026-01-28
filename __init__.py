@@ -17,7 +17,7 @@ from fiftyone.core.utils import add_sys_path
 
 with add_sys_path(os.path.dirname(os.path.abspath(__file__))):
     from exemplars import extract_exemplar_frames
-    from annoprop import propagate_annotations
+    from annoprop import propagate_annotations_pairwise
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +261,7 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
 
         # TODO(neeraja): progress reporting
 
-        propagation_scores = propagate_annotations(
+        propagation_scores = propagate_annotations_pairwise(
             view=view,
             exemplar_frame_field=exemplar_frame_field,
             input_annotation_field=input_annotation_field,

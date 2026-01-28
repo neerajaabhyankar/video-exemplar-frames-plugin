@@ -16,8 +16,8 @@ from annoprop_algos import (
     propagate_detections_with_densecrf, 
     propagate_detections_cv2_ot,
     propagate_segmentations_with_persam,
-    propagate_detections_with_siamese,
-    propagate_detections_with_swintrack,
+    PropagatorSiamFC,
+    PropagatorSwinTrack,
 )
 
 def propagate_detections_no_op(
@@ -37,7 +37,7 @@ def propagate_detections_no_op(
     return source_detections
 
 
-def propagate_annotations(
+def propagate_annotations_pairwise(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
     exemplar_frame_field: str,
     input_annotation_field: str,
@@ -54,6 +54,10 @@ def propagate_annotations(
         evaluate_propagation: Whether to evaluate the propagation against
                               the input annotation field present in the propagation targets.
     """
+    propagator = PropagatorSiamFC()
+    # propagator = PropagatorSwinTrack()
+    propagator.setup()
+
     def process_sample(sample):
         if sample[exemplar_frame_field]["is_exemplar"]:
             sample[output_annotation_field] = sample[input_annotation_field]
@@ -71,10 +75,11 @@ def propagate_annotations(
             # propagated_detections = propagate_detections_with_densecrf(sample_frame, exemplar_detections)
             # propagated_detections = propagate_detections_cv2_ot(exemplar_frame, sample_frame, exemplar_detections)
             # propagated_detections = propagate_segmentations_with_persam(exemplar_frame, sample_frame, exemplar_detections)
-            # propagated_detections = propagate_detections_with_siamese(exemplar_frame, sample_frame, exemplar_detections)
-            propagated_detections = propagate_detections_with_swintrack(exemplar_frame, sample_frame, exemplar_detections)
+
+            propagator.register_source_frame(exemplar_frame, exemplar_detections)
+            propagated_detections = propagator.propagate_to_target_frame(sample_frame)
+
             sample[output_annotation_field] = propagated_detections
-            sample.save()
 
             # If the sample already has an input annotation field, evaluate against it
             if evaluate_propagation and sample[input_annotation_field]:
@@ -86,10 +91,78 @@ def propagate_annotations(
         
         return None
 
-    results = view.map_samples(process_sample, num_workers=1)
+    results = view.map_samples(process_sample, num_workers=1, save=True)
     scores = {sample_id: score for sample_id, score in results if score is not None}
     
     return scores
+
+
+def propagate_annotations_sequential(
+    view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
+    exemplar_frame_field: str,
+    input_annotation_field: str,
+    output_annotation_field: str,
+    evaluate_propagation: Optional[bool] = True,
+    sort_field: Optional[str] = "frame_number",
+) -> dict[str, float]:
+    """
+    Propagate annotations from exemplar frames to all the frames.
+    Args:
+        view: The view to propagate annotations from
+        exemplar_frame_field: The field name in which the exemplar frame assignments are stored
+        input_annotation_field: The field name of the annotation to copy from the exemplar frame field
+        output_annotation_field: The field name of the annotation to save to the target frame
+        evaluate_propagation: Whether to evaluate the propagation against
+                              the input annotation field present in the propagation targets.
+    """
+    exemplar_propagators = {}
+    
+    def process_sample(sample):
+        if sample[exemplar_frame_field]["is_exemplar"]:
+            sample[output_annotation_field] = sample[input_annotation_field]
+            return None
+        elif len(sample[exemplar_frame_field]["exemplar_assignment"]) > 0:
+            exemplar_frame_ids = sample[exemplar_frame_field]["exemplar_assignment"]
+            # TODO(neeraja): handle multiple exemplar frames for the same sample
+            exemplar_sample = view[exemplar_frame_ids[0]]
+
+            if exemplar_sample.id not in exemplar_propagators:
+                # exemplar_propagator = PropagatorSiamFC()
+                exemplar_propagator = PropagatorSwinTrack()
+                exemplar_propagator.setup()
+
+                exemplar_frame = cv2.imread(exemplar_sample.filepath)
+                exemplar_detections = exemplar_sample[input_annotation_field]
+                exemplar_propagator.register_source_frame(exemplar_frame, exemplar_detections)
+                exemplar_propagators[exemplar_sample.id] = exemplar_propagator
+            else:
+                exemplar_propagator = exemplar_propagators[exemplar_sample.id]
+
+            sample_frame = cv2.imread(sample.filepath)
+            propagated_detections = exemplar_propagator.propagate_to_target_frame(sample_frame)
+        else:
+            propagated_detections = fo.Detections(detections=[])
+
+        sample[output_annotation_field] = propagated_detections
+
+        # If the sample already has an input annotation field, evaluate against it
+        if evaluate_propagation and sample[input_annotation_field]:
+            original_detections = sample[input_annotation_field]
+            # TODO(neeraja): decouple the matching and the evaluation
+            sample_score = evaluate(original_detections, propagated_detections)
+            logger.debug(f"Sample {sample.id} score: {sample_score}")
+            return sample_score
+        
+        return None
+
+    if view.has_field(sort_field):
+        results = view.sort_by(sort_field).map_samples(process_sample, num_workers=1, save=True)
+    else:
+        results = view.map_samples(process_sample, num_workers=1, save=True)
+    scores = {sample_id: score for sample_id, score in results if score is not None}
+    
+    return scores
+
 
 
 def estimate_propagatability(

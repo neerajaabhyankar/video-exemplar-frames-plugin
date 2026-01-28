@@ -10,7 +10,7 @@ import fiftyone.zoo as foz
 import fiftyone.operators as foo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from annoprop import propagate_annotations, estimate_propagatability
+from annoprop import propagate_annotations_pairwise, estimate_propagatability
 
 
 @pytest.fixture
@@ -41,11 +41,11 @@ def exemplar_assigned_dataset(dataset):
 
 
 def test_propagation(exemplar_assigned_dataset):
-    score = propagate_annotations(
+    score = propagate_annotations_pairwise(
         exemplar_assigned_dataset,
         exemplar_frame_field="exemplar_first_frame", 
         input_annotation_field="ground_truth",
-        output_annotation_field="ground_truth_propagated",
+        output_annotation_field="ground_truth_propagated_swin_sequential",
     )
 
     for sample_id, sample_score in score.items():
@@ -64,7 +64,7 @@ def test_propagatability(exemplar_assigned_dataset):
         exemplar_frame_field="exemplar_first_frame",
         input_annotation_field="ground_truth",
     )
-    score = propagate_annotations(
+    score = propagate_annotations_pairwise(
         exemplar_assigned_dataset,
         exemplar_frame_field="exemplar_first_frame", 
         input_annotation_field="ground_truth",

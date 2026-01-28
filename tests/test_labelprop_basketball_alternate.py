@@ -9,7 +9,7 @@ import fiftyone as fo
 import fiftyone.operators as foo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from annoprop import propagate_annotations, estimate_propagatability
+from annoprop import propagate_annotations_pairwise, estimate_propagatability
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ def exemplar_assigned_dataset_slice(dataset_slice):
 
 
 def test_propagation(exemplar_assigned_dataset_slice):
-    score = propagate_annotations(
+    score = propagate_annotations_pairwise(
         exemplar_assigned_dataset_slice,
         exemplar_frame_field="exemplar_test", 
         input_annotation_field="ha_test_1",
@@ -64,7 +64,7 @@ def test_propagatability(exemplar_assigned_dataset_slice):
         exemplar_frame_field="exemplar_test",
         input_annotation_field="ha_test_1",
     )
-    score = propagate_annotations(
+    score = propagate_annotations_pairwise(
         exemplar_assigned_dataset_slice,
         exemplar_frame_field="exemplar_test",
         input_annotation_field="ha_test_1",
