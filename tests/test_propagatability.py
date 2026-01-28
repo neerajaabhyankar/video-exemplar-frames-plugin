@@ -14,9 +14,6 @@ import fiftyone.brain as fob
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from annoprop import propagate_annotations
-from annoprop_algos import setup_siamfc
-from utils import evaluate
-from annoprop_algos import propagate_detections_with_siamese
 
 
 """ Load dataset """
