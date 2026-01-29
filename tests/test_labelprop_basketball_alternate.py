@@ -26,7 +26,7 @@ def exemplar_assigned_dataset_slice(dataset_slice):
 
     exemplar_id = dataset_slice.first().id
     for ii, sample in enumerate(dataset_slice.sort_by("frame_number")):
-        if ii % 2 == 0:
+        if ii == 0:
             is_exemplar = True
             exemplar_id = sample.id
         else:

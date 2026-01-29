@@ -10,12 +10,15 @@ import fiftyone.zoo as foz
 import fiftyone.operators as foo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from annoprop import propagate_annotations, estimate_propagatability
+from annoprop import propagate_annotations, propagate_annotations_sam2, estimate_propagatability
 
 
 @pytest.fixture
 def dataset():
     dataset = foz.load_zoo_dataset("https://github.com/voxel51/davis-2017", split="validation", format="image")
+    # SELECT_SEQUENCES = ["bike-packing", "blackswan", "bmx-trees", "breakdance", "camel"]
+    SELECT_SEQUENCES = ["blackswan"]
+    dataset = dataset.match_tags(SELECT_SEQUENCES)
     return dataset
 
 
@@ -45,7 +48,25 @@ def test_propagation(exemplar_assigned_dataset):
         exemplar_assigned_dataset,
         exemplar_frame_field="exemplar_first_frame", 
         input_annotation_field="ground_truth",
-        output_annotation_field="ground_truth_propagated_swin_sequential",
+        output_annotation_field="ground_truth_propagated",
+    )
+
+    for sample_id, sample_score in score.items():
+        print(f"Sample {sample_id} score: {sample_score}")
+    
+    print(f"Average propagation score: {np.mean(list(score.values()))}")
+    
+    # assert np.mean(list(score.values())) > 0.33
+    session = fo.launch_app(exemplar_assigned_dataset)
+    session.wait()
+
+
+def test_propagation_sam2(exemplar_assigned_dataset):
+    score = propagate_annotations_sam2(
+        exemplar_assigned_dataset,
+        exemplar_frame_field="exemplar_first_frame", 
+        input_annotation_field="ground_truth",
+        output_annotation_field="ground_truth_propagated_sam2",
     )
 
     for sample_id, sample_score in score.items():
