@@ -219,7 +219,7 @@ class PropagateLabelsFromAssignedExemplars(foo.Operator):
     def config(self) -> foo.OperatorConfig:
         return foo.OperatorConfig(
             name="propagate_labels_from_assigned_exemplars",
-            label="Propagate Labels From Assigned Exemplars Operator",
+            label="Propagate Labels From Assigned Exemplars Operator [To Be Deprecated]",
             description="Propagate labels from assigned exemplar frames to all the frames",
             icon="/assets/keyframes_anno.svg",
             dynamic=True,
@@ -386,6 +386,7 @@ class PropagateLabelsFromAssignedExemplars(foo.Operator):
         
         return True
 
+
 class PropagateLabelsFromExemplars(foo.Operator):
     version = "1.0.0"
     
@@ -403,6 +404,61 @@ class PropagateLabelsFromExemplars(foo.Operator):
                 default_choice_to_delegated=True,
             ),
         )
+    
+    def validate_input(self, ctx) -> bool:
+        input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
+        output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
+
+        if output_annotation_field == input_annotation_field:
+            logger.warning(
+                f"Output annotation field '{output_annotation_field}' cannot be the same as "
+                f"the input annotation field '{input_annotation_field}'. "
+                f"Please choose a different output field name to avoid overwriting the source annotations."
+            )
+            return False
+        
+        schema = ctx.dataset.get_field_schema()
+        if input_annotation_field not in schema:
+            logger.warning(
+                f"Input annotation field '{input_annotation_field}' not found in the dataset. "
+                f"Please ensure the field exists and contains annotations."
+            )
+            return False
+        
+        return True
+
+    def resolve_input(self, ctx) -> types.Property:
+        # TODO(neeraja): warn for large datasets
+        inputs = types.Object()
+
+        # Get available fields from dataset schema for autocomplete
+        schema = ctx.dataset.get_field_schema()
+        field_choices = [types.Choice(label=f, value=f) for f in schema.keys()]
+        
+        inputs.str(
+            "input_annotation_field",
+            label="Annotation Field to Propagate from",
+            default="human_labels",
+            view=types.AutocompleteView(choices=field_choices) if field_choices else None,
+            required=True,
+        )
+
+        inputs.str(
+            "output_annotation_field",
+            label="Annotation Field to Propagate to",
+            default="human_labels_propagated",
+            required=True,
+        )
+
+        inputs.str(
+            "sort_field",
+            label="Field to Sort Samples by",
+            default="frame_number",
+            view=types.AutocompleteView(choices=field_choices) if field_choices else None,
+            required=False,
+        )
+
+        return types.Property(inputs)
 
     def execute(self, ctx) -> dict:
         # TODO(neeraja): delegate for large datasets
@@ -416,20 +472,20 @@ class PropagateLabelsFromExemplars(foo.Operator):
         
         view = ctx.target_view()
         total_samples = len(view)
-        exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
         input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
         output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
+        sort_field = ctx.params.get("sort_field", "frame_number")
         
         # TODO(neeraja): allow for (re?)computing exemplar assignments
         # at this stage, given the annotations!
 
         # TODO(neeraja): progress reporting
 
-        propagation_scores = propagate_annotations_pairwise(
+        propagation_scores = propagate_annotations_sam2(
             view=view,
-            exemplar_frame_field=exemplar_frame_field,
             input_annotation_field=input_annotation_field,
             output_annotation_field=output_annotation_field,
+            sort_field=sort_field,
         )
         logger.info(f"Annotations propagated from {input_annotation_field} to {output_annotation_field}")
         logger.info(f"Propagation scores available for {len(propagation_scores)} samples")
@@ -446,7 +502,6 @@ class PropagateLabelsFromExemplars(foo.Operator):
         try:
             # Store config
             run_config = ctx.dataset.init_run()
-            run_config.exemplar_frame_field = exemplar_frame_field
             run_config.input_annotation_field = input_annotation_field
             run_config.output_annotation_field = output_annotation_field
             run_config.dataset_id = ctx.dataset.id
@@ -488,77 +543,7 @@ class PropagateLabelsFromExemplars(foo.Operator):
             "run_key": run_key,
         }
 
-    def resolve_input(self, ctx) -> types.Property:
-        # TODO(neeraja): warn for large datasets
-        inputs = types.Object()
 
-        # Get available fields from dataset schema for autocomplete
-        schema = ctx.dataset.get_field_schema()
-        field_choices = [types.Choice(label=f, value=f) for f in schema.keys()]
-        
-        inputs.str(
-            "exemplar_frame_field",
-            label="Exemplar Frame Information Field",
-            default="exemplar",
-            view=types.AutocompleteView(choices=field_choices) if field_choices else None,
-            required=True,
-        )
-
-        inputs.str(
-            "input_annotation_field",
-            label="Annotation Field to Propagate from",
-            default="human_labels",
-            view=types.AutocompleteView(choices=field_choices) if field_choices else None,
-            required=True,
-        )
-
-        inputs.str(
-            "output_annotation_field",
-            label="Annotation Field to Propagate to",
-            default="human_labels_propagated",
-            required=True,
-        )
-
-        return types.Property(inputs)
-
-    def validate_input(self, ctx) -> bool:
-        exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
-        input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
-        output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
-
-        if output_annotation_field == input_annotation_field:
-            logger.warning(
-                f"Output annotation field '{output_annotation_field}' cannot be the same as "
-                f"the input annotation field '{input_annotation_field}'. "
-                f"Please choose a different output field name to avoid overwriting the source annotations."
-            )
-            return False
-        
-        schema = ctx.dataset.get_field_schema()
-        if exemplar_frame_field not in schema:
-            logger.warning(
-                f"Exemplar frame field '{exemplar_frame_field}' not found in the dataset. "
-                f"Please run 'extract_exemplar_frames' first."
-            )
-            return False
-        elif (type(schema[exemplar_frame_field]) != fo.EmbeddedDocumentField) or \
-            ("is_exemplar" not in schema[exemplar_frame_field].get_field_schema()) or \
-            (type(schema[exemplar_frame_field].get_field_schema()["is_exemplar"]) != fo.BooleanField) or \
-            ("exemplar_assignment" not in schema[exemplar_frame_field].get_field_schema()):
-            logger.warning(
-                f"Exemplar frame field '{exemplar_frame_field}' is not of the correct type. "
-                f"Please run 'extract_exemplar_frames' first."
-            )
-            return False
-        
-        if input_annotation_field not in schema:
-            logger.warning(
-                f"Input annotation field '{input_annotation_field}' not found in the dataset. "
-                f"Please ensure the field exists and contains annotations."
-            )
-            return False
-        
-        return True
 
 def register(p):
     p.register(ExtractExemplarFrames)

@@ -69,9 +69,9 @@ def test_propagation(exemplar_assigned_dataset):
 def test_propagation_sam2(exemplar_assigned_dataset):
     score = propagate_annotations_sam2(
         exemplar_assigned_dataset,
-        exemplar_frame_field="exemplar_first_frame", 
         input_annotation_field="ground_truth",
         output_annotation_field="ground_truth_propagated_sam2",
+        sort_field="frame_number",
     )
 
     for sample_id, sample_score in score.items():

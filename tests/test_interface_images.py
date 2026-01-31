@@ -40,7 +40,7 @@ def test_extract_exemplar_frames(clean_dataset_fixture):
 
 
 @pytest.mark.dependency(depends=["test_extract_exemplar_frames"])
-def test_propagate_labels(dataset_fixture):
+def test_propagate_labels_assigned(dataset_fixture):
     ctx2 = {
         "dataset": dataset_fixture,
         "view": dataset_fixture.load_saved_view(VIEW_NAME),
@@ -48,6 +48,46 @@ def test_propagate_labels(dataset_fixture):
             "exemplar_frame_field": "exemplar_test",
             "input_annotation_field": "ha_test_1",
             "output_annotation_field": "ha_test_1_propagated",
+        },
+    }
+
+    anno_prop_result = foo.execute_operator(
+        "@neerajaabhyankar/video-exemplar-frames-plugin/propagate_labels_from_assigned_exemplars",
+        ctx2
+    )
+    print(anno_prop_result.result["message"])
+    for sample_id, score in anno_prop_result.result["propagation_score"].items():
+        print(f"Sample {sample_id} score: {score}")
+    if len(anno_prop_result.result["propagation_score"]) > 0:
+        print(f"Average propagation score: {np.mean(list(anno_prop_result.result['propagation_score'].values()))}")
+
+
+@pytest.fixture
+def partially_labeled_dataset_fixture(dataset_fixture):
+    if "human_labels_test" in dataset_fixture._dataset.get_field_schema():
+        dataset_fixture._dataset.delete_sample_field("human_labels_test")
+        dataset_fixture._dataset.add_sample_field(
+            "human_labels_test",
+            fo.EmbeddedDocumentField,
+            embedded_doc_type=fo.Detections,
+        )
+
+    # for a random 25% of the samples, add a human label
+    for sample in dataset_fixture.take(int(0.25 * len(dataset_fixture))):
+        if sample["ha_test_1"] is not None:
+            sample["human_labels_test"] = sample["ha_test_1"]
+            sample.save()
+    
+    return dataset_fixture
+
+
+def test_propagate_labels_unassigned(partially_labeled_dataset_fixture):
+    ctx2 = {
+        "dataset": partially_labeled_dataset_fixture,
+        "view": partially_labeled_dataset_fixture.load_saved_view(VIEW_NAME),
+        "params": {
+            "input_annotation_field": "human_labels_test",
+            "output_annotation_field": "human_labels_test_propagated",
         },
     }
 
