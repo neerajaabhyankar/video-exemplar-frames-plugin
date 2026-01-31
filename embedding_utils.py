@@ -7,7 +7,7 @@ import logging
 import fiftyone as fo
 
 from utils import normalized_bbox_to_pixel_coords
-from annoprop_algos import PropagatorSiamFC
+from labelprop_methods.siamese import PropagatorSiamFC
 
 fo.config.database_validation = False
 logger = logging.getLogger(__name__)
@@ -47,12 +47,12 @@ def compute_backbone_embeddings_siamfc(frames: Union[fo.core.collections.SampleC
         where NN is the number of frames, DD is the embedding dimension, HH, WW are the spatial dimensions.
     """
     propagator = PropagatorSiamFC()
-    tracker = propagator.setup_siamfc()
+    tracker = propagator.setup()
     _ = tracker.net.eval()
     
     def compute_embedding(frame) -> np.ndarray:
-        if isinstance(frame, fo.core.collections.SampleCollection):
-            img = cv2.imread(frame.filepath)
+        if isinstance(frame, fo.core.sample.Sample) or isinstance(frame, fo.core.sample.SampleView):
+            img = cv2.imread(frame.filepath)            
         else:
             img = frame
         # Convert to torch tensor and process through backbone (similar to siamfc.py:159-166)

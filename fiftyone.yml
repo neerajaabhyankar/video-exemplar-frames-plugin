@@ -9,5 +9,5 @@ license: Apache 2.0
 description: Extract exemplar frames from a video dataset
 operators:
   - extract_exemplar_frames
-  - propagate_annotations_from_assigned_exemplars
-  - propagate_annotations_from_exemplars
+  - propagate_labels_from_assigned_exemplars
+  - propagate_labels_from_exemplars

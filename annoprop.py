@@ -11,15 +11,10 @@ cv2.setNumThreads(1)
 
 from utils import evaluate, evaluate_success_rate
 from embedding_utils import propagatability_pre_label, propagatability_post_label
-from annoprop_algos import (
-    propagate_detections_with_grabcut, 
-    propagate_detections_with_densecrf, 
-    propagate_detections_cv2_ot,
-    propagate_segmentations_with_persam,
-    PropagatorSiamFC,
-    PropagatorSwinTrack,
-    PropagatorSAM2,
-)
+from labelprop_methods.siamese import PropagatorSiamFC
+from labelprop_methods.swintrack import PropagatorSwinTrack
+from labelprop_methods.sam2 import PropagatorSAM2
+
 
 def propagate_detections_no_op(
     target_frame: np.ndarray,

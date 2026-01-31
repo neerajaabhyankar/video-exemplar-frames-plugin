@@ -209,18 +209,18 @@ class ExtractExemplarFrames(foo.Operator):
         }
 
 
-class PropagateAnnotationsFromAssignedExemplars(foo.Operator):
+class PropagateLabelsFromAssignedExemplars(foo.Operator):
     """
-    To be Deprecated in favor of PropagateAnnotationsFromExemplars
+    To be Deprecated in favor of PropagateLabelsFromExemplars
     """
     version = "1.0.0"
     
     @property
     def config(self) -> foo.OperatorConfig:
         return foo.OperatorConfig(
-            name="propagate_annotations_from_assigned_exemplars",
-            label="Propagate Annotations From Assigned Exemplars Operator",
-            description="Propagate annotations from assigned exemplar frames to all the frames",
+            name="propagate_labels_from_assigned_exemplars",
+            label="Propagate Labels From Assigned Exemplars Operator",
+            description="Propagate labels from assigned exemplar frames to all the frames",
             icon="/assets/keyframes_anno.svg",
             dynamic=True,
             execution_options=foo.ExecutionOptions(
@@ -300,7 +300,7 @@ class PropagateAnnotationsFromAssignedExemplars(foo.Operator):
                 run_info = ctx.dataset.get_run_info(run_key)
                 ctx.dataset.register_run(latest_key, run_info.config)
 
-            logger.info(f"Custom propagate_annotations_from_exemplars run stored: {run_key}")
+            logger.info(f"Custom propagate_labels_from_exemplars run stored: {run_key}")
         except Exception as e:
             # Custom runs not available (e.g., in test context or non-persistent dataset)
             # Continue without failing
@@ -386,15 +386,15 @@ class PropagateAnnotationsFromAssignedExemplars(foo.Operator):
         
         return True
 
-class PropagateAnnotationsFromExemplars(foo.Operator):
+class PropagateLabelsFromExemplars(foo.Operator):
     version = "1.0.0"
     
     @property
     def config(self) -> foo.OperatorConfig:
         return foo.OperatorConfig(
-            name="propagate_annotations_from_exemplars",
-            label="Propagate Annotations From Exemplars Operator",
-            description="Propagate annotations from exemplar frames to all the frames",
+            name="propagate_labels_from_exemplars",
+            label="Propagate Labels From Exemplars Operator",
+            description="Propagate labels from exemplar frames to all the frames",
             icon="/assets/keyframes_anno.svg",
             dynamic=True,
             execution_options=foo.ExecutionOptions(
@@ -474,7 +474,7 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
                 run_info = ctx.dataset.get_run_info(run_key)
                 ctx.dataset.register_run(latest_key, run_info.config)
 
-            logger.info(f"Custom propagate_annotations_from_exemplars run stored: {run_key}")
+            logger.info(f"Custom propagate_labels_from_exemplars run stored: {run_key}")
         except Exception as e:
             # Custom runs not available (e.g., in test context or non-persistent dataset)
             # Continue without failing
@@ -562,5 +562,5 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
 
 def register(p):
     p.register(ExtractExemplarFrames)
-    p.register(PropagateAnnotationsFromAssignedExemplars)
-    p.register(PropagateAnnotationsFromExemplars)
+    p.register(PropagateLabelsFromAssignedExemplars)
+    p.register(PropagateLabelsFromExemplars)

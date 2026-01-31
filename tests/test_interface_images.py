@@ -40,7 +40,7 @@ def test_extract_exemplar_frames(clean_dataset_fixture):
 
 
 @pytest.mark.dependency(depends=["test_extract_exemplar_frames"])
-def test_propagate_annotations(dataset_fixture):
+def test_propagate_labels(dataset_fixture):
     ctx2 = {
         "dataset": dataset_fixture,
         "view": dataset_fixture.load_saved_view(VIEW_NAME),
@@ -52,7 +52,7 @@ def test_propagate_annotations(dataset_fixture):
     }
 
     anno_prop_result = foo.execute_operator(
-        "@neerajaabhyankar/video-exemplar-frames-plugin/propagate_annotations_from_exemplars",
+        "@neerajaabhyankar/video-exemplar-frames-plugin/propagate_labels_from_exemplars",
         ctx2
     )
     print(anno_prop_result.result["message"])
