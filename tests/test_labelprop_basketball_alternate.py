@@ -9,7 +9,12 @@ import fiftyone as fo
 import fiftyone.operators as foo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from annoprop import propagate_annotations, estimate_propagatability
+from annoprop import (
+    propagate_annotations_pairwise,
+    propagate_annotations_sequential,
+    propagate_annotations_sam2, 
+    estimate_propagatability
+)
 
 
 @pytest.fixture
@@ -26,7 +31,7 @@ def exemplar_assigned_dataset_slice(dataset_slice):
 
     exemplar_id = dataset_slice.first().id
     for ii, sample in enumerate(dataset_slice.sort_by("frame_number")):
-        if ii == 0:
+        if ii %2 == 0:
             is_exemplar = True
             exemplar_id = sample.id
         else:
@@ -41,7 +46,7 @@ def exemplar_assigned_dataset_slice(dataset_slice):
 
 
 def test_propagation(exemplar_assigned_dataset_slice):
-    score = propagate_annotations(
+    score = propagate_annotations_pairwise(
         exemplar_assigned_dataset_slice,
         exemplar_frame_field="exemplar_test", 
         input_annotation_field="ha_test_1",
@@ -53,9 +58,9 @@ def test_propagation(exemplar_assigned_dataset_slice):
     
     print(f"Average propagation score: {np.mean(list(score.values()))}")
     
-    # assert np.mean(list(score.values())) > 0.4
-    session = fo.launch_app(exemplar_assigned_dataset_slice)
-    session.wait()
+    assert np.mean(list(score.values())) > 0.4
+    # session = fo.launch_app(exemplar_assigned_dataset_slice)
+    # session.wait()
 
 
 def test_propagatability(exemplar_assigned_dataset_slice):
@@ -64,7 +69,7 @@ def test_propagatability(exemplar_assigned_dataset_slice):
         exemplar_frame_field="exemplar_test",
         input_annotation_field="ha_test_1",
     )
-    score = propagate_annotations(
+    score = propagate_annotations_pairwise(
         exemplar_assigned_dataset_slice,
         exemplar_frame_field="exemplar_test",
         input_annotation_field="ha_test_1",

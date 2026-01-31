@@ -97,8 +97,7 @@ def propagate_annotations_pairwise(
     return scores
 
 
-# def propagate_annotations_non_sam(
-def propagate_annotations(
+def propagate_annotations_sequential(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
     exemplar_frame_field: str,
     input_annotation_field: str,
@@ -128,8 +127,8 @@ def propagate_annotations(
             exemplar_sample = view[exemplar_frame_ids[0]]
 
             if exemplar_sample.id not in exemplar_propagators:
-                exemplar_propagator = PropagatorSiamFC()
-                # exemplar_propagator = PropagatorSwinTrack()
+                # exemplar_propagator = PropagatorSiamFC()
+                exemplar_propagator = PropagatorSwinTrack()
 
                 exemplar_frame = cv2.imread(exemplar_sample.filepath)
                 exemplar_detections = exemplar_sample[input_annotation_field]
@@ -165,7 +164,6 @@ def propagate_annotations(
 
 
 def propagate_annotations_sam2(
-# def propagate_annotations(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
     exemplar_frame_field: str,
     input_annotation_field: str,
