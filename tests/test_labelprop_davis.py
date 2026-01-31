@@ -16,13 +16,15 @@ from annoprop import (
     propagate_annotations_sam2,
     estimate_propagatability
 )
+from utils import evaluate
 
 
 @pytest.fixture
 def dataset():
     dataset = foz.load_zoo_dataset("https://github.com/voxel51/davis-2017", split="validation", format="image")
     # SELECT_SEQUENCES = ["bike-packing", "blackswan", "bmx-trees", "breakdance", "camel"]
-    SELECT_SEQUENCES = ["blackswan"]
+    SELECT_SEQUENCES = ["blackswan", "breakdance", "india"]
+    # SELECT_SEQUENCES = ["bike-packing"]
     dataset = dataset.match_tags(SELECT_SEQUENCES)
     return dataset
 
@@ -48,6 +50,28 @@ def exemplar_assigned_dataset(dataset):
     return dataset
 
 
+@pytest.fixture
+def partially_labeled_dataset(dataset):
+    if "human_labels_test" in dataset._dataset.get_field_schema():
+        dataset._dataset.delete_sample_field("human_labels_test")
+        dataset._dataset.add_sample_field(
+            "human_labels_test",
+            fo.EmbeddedDocumentField,
+            embedded_doc_type=fo.Detections,
+        )
+    
+    sequences = dataset.distinct("tags")
+    sequences.remove("val")
+
+    for seq in sequences:
+        dataset_slice = dataset.match_tags(seq).sort_by("frame_number")
+        exemplar_sample = dataset_slice.first()
+        exemplar_sample["human_labels_test"] = exemplar_sample["ground_truth"]
+        exemplar_sample.save()
+    
+    return dataset
+
+
 def test_propagation(exemplar_assigned_dataset):
     score = propagate_annotations_pairwise(
         exemplar_assigned_dataset,
@@ -66,22 +90,27 @@ def test_propagation(exemplar_assigned_dataset):
     session.wait()
 
 
-def test_propagation_sam2(exemplar_assigned_dataset):
+def test_propagation_sam2(partially_labeled_dataset):
     score = propagate_annotations_sam2(
-        exemplar_assigned_dataset,
-        exemplar_frame_field="exemplar_first_frame", 
-        input_annotation_field="ground_truth",
-        output_annotation_field="ground_truth_propagated_sam2",
+        partially_labeled_dataset,
+        input_annotation_field="human_labels_test",
+        output_annotation_field="human_labels_test_propagated",
+        sort_field="frame_number",
     )
 
-    for sample_id, sample_score in score.items():
-        print(f"Sample {sample_id} score: {sample_score}")
+    scores = []
+    for sample in partially_labeled_dataset:
+        gt_detections = sample["ground_truth"]
+        propagated_detections = sample["human_labels_test_propagated"]
+        sample_score = evaluate(gt_detections, propagated_detections)
+        scores.append(sample_score)
+        print(f"Sample {sample.id} score: {sample_score}")
     
-    print(f"Average propagation score: {np.mean(list(score.values()))}")
+    print(f"Average propagation score: {np.mean(scores)}")
     
-    # assert np.mean(list(score.values())) > 0.33
-    session = fo.launch_app(exemplar_assigned_dataset)
-    session.wait()
+    assert np.mean(scores) > 0.5
+    # session = fo.launch_app(partially_labeled_dataset)
+    # session.wait()
 
 
 def test_propagatability(exemplar_assigned_dataset):

@@ -1,5 +1,6 @@
-from typing import Tuple, Union, Optional
+import os
 import logging
+from typing import Tuple, Union, Optional
 import numpy as np
 import cv2
 from scipy.optimize import linear_sum_assignment
@@ -160,52 +161,48 @@ def propagate_annotations_sequential(
 
 def propagate_annotations_sam2(
     view: Union[fo.core.dataset.Dataset, fo.core.view.DatasetView],
-    exemplar_frame_field: str,
     input_annotation_field: str,
     output_annotation_field: str,
     evaluate_propagation: Optional[bool] = True,
     sort_field: Optional[str] = "frame_number",
 ) -> dict[str, float]:
     """
-    Propagate annotations from exemplar frames to all the frames.
+    Propagate annotations from exemplar frames (containing labels in input_annotation_field) to all the frames.
     Args:
         view: The view to propagate annotations from
-        exemplar_frame_field: The field name in which the exemplar frame assignments are stored
         input_annotation_field: The field name of the annotation to copy from the exemplar frame field
         output_annotation_field: The field name of the annotation to save to the target frame
         evaluate_propagation: Whether to evaluate the propagation against
                               the input annotation field present in the propagation targets.
     """
-    exemplar_propagators = {}
-    
+
+    # Set up the propagator
+    propagator = PropagatorSAM2()
+
+    if view.has_field(sort_field):
+        image_path_list = view.sort_by(sort_field).values("filepath")
+    else:
+        image_path_list = view.values("filepath")
+    propagator.initialize(image_path_list)
+
+    # Register all frames
+    def register_sample(sample):
+        if sample[input_annotation_field]:
+            propagator.register_source_frame(sample.filepath, sample[input_annotation_field])
+
+    _ = list(view.map_samples(register_sample, num_workers=1))
+
+    # Propagate
+    propagator.propagate_to_all_frames()
+
+    # Process each sample
     def process_sample(sample):
-        if sample[exemplar_frame_field]["is_exemplar"]:
+        if sample[input_annotation_field]:
             sample[output_annotation_field] = sample[input_annotation_field]
             return None
-        elif len(sample[exemplar_frame_field]["exemplar_assignment"]) > 0:
-            exemplar_frame_ids = sample[exemplar_frame_field]["exemplar_assignment"]
-            # TODO(neeraja): handle multiple exemplar frames for the same sample
-            exemplar_sample = view[exemplar_frame_ids[0]]
-
-            if exemplar_sample.id not in exemplar_propagators:
-                exemplar_propagator = PropagatorSAM2()
-
-                # For now, we assume that all the samples in exemplar_sample.filepath
-                # are relevant for propagation
-                # This is because SAM2 only accepts a video or an image folder as init
-                # TODO(neeraja): find a workaround
-
-                exemplar_filepath = exemplar_sample.filepath
-                exemplar_detections = exemplar_sample[input_annotation_field]
-                exemplar_propagator.register_source_frame(exemplar_filepath, exemplar_detections)
-                exemplar_propagators[exemplar_sample.id] = exemplar_propagator
-            else:
-                exemplar_propagator = exemplar_propagators[exemplar_sample.id]
-
-            sample_filepath = sample.filepath
-            propagated_detections = exemplar_propagator.propagate_to_target_frame(sample_filepath)
         else:
-            propagated_detections = fo.Detections(detections=[])
+            sample_filepath = sample.filepath
+            propagated_detections = propagator.propagate_to_target_frame(sample_filepath)
 
         sample[output_annotation_field] = propagated_detections
 

@@ -88,12 +88,12 @@ def test_propagatability(exemplar_assigned_dataset_slice):
     print(f"  Spearman: {spearman_corr:.3f} (p={spearman_p:.4f})")
     print(f"  Pearson:  {pearson_corr:.3f} (p={pearson_p:.4f})")
 
-    # Scatter plot: estimate vs true
-    plt.figure(figsize=(5, 4))
-    plt.scatter(est_array, true_array, alpha=0.6, c="steelblue")
-    plt.xlabel("Estimated Propagatability")
-    plt.ylabel("True Propagation Score")
-    plt.title(f"Estimate vs True (Spearman: {spearman_corr:.3f})")
-    plt.grid(True, alpha=0.7)
-    plt.tight_layout()
-    plt.show()
+    # # Scatter plot: estimate vs true
+    # plt.figure(figsize=(5, 4))
+    # plt.scatter(est_array, true_array, alpha=0.6, c="steelblue")
+    # plt.xlabel("Estimated Propagatability")
+    # plt.ylabel("True Propagation Score")
+    # plt.title(f"Estimate vs True (Spearman: {spearman_corr:.3f})")
+    # plt.grid(True, alpha=0.7)
+    # plt.tight_layout()
+    # plt.show()
