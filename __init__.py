@@ -59,13 +59,8 @@ class ExtractExemplarFrames(foo.Operator):
 
     def resolve_input(self, ctx) -> types.Property:
         inputs = types.Object()
-        
-        # # Warn for large datasets
-        # if len(ctx.view) > 1000:
-        #     inputs.view("warning", types.Warning(
-        #         label="Large Dataset",
-        #         description=f"This operation will process {len(ctx.view)} samples and may take a long time."
-        #     ))
+
+        # TODO(neeraja): warn for large datasets
 
         # exemplar extraction method
         # TODO(neeraja): this is hacky right now, will be made cleaner
@@ -112,16 +107,10 @@ class ExtractExemplarFrames(foo.Operator):
         )
 
         return types.Property(inputs)
-    
-    # def resolve_delegation(self, ctx) -> bool:
-    #     """Delegate for heavy operations, but allow immediate execution for small datasets."""
-    #     # For test contexts or small datasets, allow immediate execution
-    #     view = ctx.target_view() if hasattr(ctx, "target_view") else ctx.view
-    #     if len(view) < 100:
-    #         return False
-    #     return True
 
     def execute(self, ctx) -> dict:
+        # TODO(neeraja): delegate for large datasets
+
         # Make dataset persistent if possible (required for custom runs)
         try:
             ctx.dataset.persistent = True
@@ -220,15 +209,18 @@ class ExtractExemplarFrames(foo.Operator):
         }
 
 
-class PropagateAnnotationsFromExemplars(foo.Operator):
+class PropagateAnnotationsFromAssignedExemplars(foo.Operator):
+    """
+    To be Deprecated in favor of PropagateAnnotationsFromExemplars
+    """
     version = "1.0.0"
     
     @property
     def config(self) -> foo.OperatorConfig:
         return foo.OperatorConfig(
-            name="propagate_annotations_from_exemplars",
-            label="Propagate Annotations From Exemplars Operator",
-            description="Propagate annotations from exemplar frames to all the frames",
+            name="propagate_annotations_from_assigned_exemplars",
+            label="Propagate Annotations From Assigned Exemplars Operator",
+            description="Propagate annotations from assigned exemplar frames to all the frames",
             icon="/assets/keyframes_anno.svg",
             dynamic=True,
             execution_options=foo.ExecutionOptions(
@@ -238,15 +230,9 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
             ),
         )
 
-    # def resolve_delegation(self, ctx) -> bool:
-    #     """Delegate for heavy operations, but allow immediate execution for small datasets."""
-    #     # For test contexts or small datasets, allow immediate execution
-    #     view = ctx.target_view() if hasattr(ctx, "target_view") else ctx.view
-    #     if len(view) < 100:
-    #         return False
-    #     return True
-
     def execute(self, ctx) -> dict:
+        # TODO(neeraja): delegate for large datasets
+
         if not self.validate_input(ctx):
             return {
                 "message": "Validation failed",
@@ -329,6 +315,181 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
         }
 
     def resolve_input(self, ctx) -> types.Property:
+        # TODO(neeraja): warn for large datasets
+        inputs = types.Object()
+
+        # Get available fields from dataset schema for autocomplete
+        schema = ctx.dataset.get_field_schema()
+        field_choices = [types.Choice(label=f, value=f) for f in schema.keys()]
+        
+        inputs.str(
+            "exemplar_frame_field",
+            label="Exemplar Frame Information Field",
+            default="exemplar",
+            view=types.AutocompleteView(choices=field_choices) if field_choices else None,
+            required=True,
+        )
+
+        inputs.str(
+            "input_annotation_field",
+            label="Annotation Field to Propagate from",
+            default="human_labels",
+            view=types.AutocompleteView(choices=field_choices) if field_choices else None,
+            required=True,
+        )
+
+        inputs.str(
+            "output_annotation_field",
+            label="Annotation Field to Propagate to",
+            default="human_labels_propagated",
+            required=True,
+        )
+
+        return types.Property(inputs)
+
+    def validate_input(self, ctx) -> bool:
+        exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
+        input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
+        output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
+
+        if output_annotation_field == input_annotation_field:
+            logger.warning(
+                f"Output annotation field '{output_annotation_field}' cannot be the same as "
+                f"the input annotation field '{input_annotation_field}'. "
+                f"Please choose a different output field name to avoid overwriting the source annotations."
+            )
+            return False
+        
+        schema = ctx.dataset.get_field_schema()
+        if exemplar_frame_field not in schema:
+            logger.warning(
+                f"Exemplar frame field '{exemplar_frame_field}' not found in the dataset. "
+                f"Please run 'extract_exemplar_frames' first."
+            )
+            return False
+        elif (type(schema[exemplar_frame_field]) != fo.EmbeddedDocumentField) or \
+            ("is_exemplar" not in schema[exemplar_frame_field].get_field_schema()) or \
+            (type(schema[exemplar_frame_field].get_field_schema()["is_exemplar"]) != fo.BooleanField) or \
+            ("exemplar_assignment" not in schema[exemplar_frame_field].get_field_schema()):
+            logger.warning(
+                f"Exemplar frame field '{exemplar_frame_field}' is not of the correct type. "
+                f"Please run 'extract_exemplar_frames' first."
+            )
+            return False
+        
+        if input_annotation_field not in schema:
+            logger.warning(
+                f"Input annotation field '{input_annotation_field}' not found in the dataset. "
+                f"Please ensure the field exists and contains annotations."
+            )
+            return False
+        
+        return True
+
+class PropagateAnnotationsFromExemplars(foo.Operator):
+    version = "1.0.0"
+    
+    @property
+    def config(self) -> foo.OperatorConfig:
+        return foo.OperatorConfig(
+            name="propagate_annotations_from_exemplars",
+            label="Propagate Annotations From Exemplars Operator",
+            description="Propagate annotations from exemplar frames to all the frames",
+            icon="/assets/keyframes_anno.svg",
+            dynamic=True,
+            execution_options=foo.ExecutionOptions(
+                allow_immediate=False,
+                allow_delegation=True,
+                default_choice_to_delegated=True,
+            ),
+        )
+
+    def execute(self, ctx) -> dict:
+        # TODO(neeraja): delegate for large datasets
+
+        if not self.validate_input(ctx):
+            return {
+                "message": "Validation failed",
+                "samples_processed": 0,
+                "samples_evaluated": 0,
+            }
+        
+        view = ctx.target_view()
+        total_samples = len(view)
+        exemplar_frame_field = ctx.params.get("exemplar_frame_field", "exemplar")
+        input_annotation_field = ctx.params.get("input_annotation_field", "human_labels")
+        output_annotation_field = ctx.params.get("output_annotation_field", "human_labels_propagated")
+        
+        # TODO(neeraja): allow for (re?)computing exemplar assignments
+        # at this stage, given the annotations!
+
+        # TODO(neeraja): progress reporting
+
+        propagation_scores = propagate_annotations_pairwise(
+            view=view,
+            exemplar_frame_field=exemplar_frame_field,
+            input_annotation_field=input_annotation_field,
+            output_annotation_field=output_annotation_field,
+        )
+        logger.info(f"Annotations propagated from {input_annotation_field} to {output_annotation_field}")
+        logger.info(f"Propagation scores available for {len(propagation_scores)} samples")
+        if len(propagation_scores) > 0:
+            logger.info(f"Mean propagation score: {sum(propagation_scores.values()) / len(propagation_scores)}")
+        
+        # Generate run key following convention: <namespace>/<operator>/<version>/<timestamp>
+        plugin_namespace = "@neerajaabhyankar/video-exemplar-frames-plugin"
+        run_key = f"{plugin_namespace}/{self.config.name}/v{self.version}/{datetime.utcnow().isoformat(timespec='seconds')}Z"
+
+        # TODO(neeraja): move this to a separate function
+
+        # Store custom run (if dataset supports it)
+        try:
+            # Store config
+            run_config = ctx.dataset.init_run()
+            run_config.exemplar_frame_field = exemplar_frame_field
+            run_config.input_annotation_field = input_annotation_field
+            run_config.output_annotation_field = output_annotation_field
+            run_config.dataset_id = ctx.dataset.id
+            run_config.dataset_name = getattr(ctx.dataset, "name", None)
+            run_config.operator = self.config.name
+            run_config.version = self.version
+            ctx.dataset.register_run(run_key, run_config, overwrite=True)
+            
+            # Store results
+            run_results = ctx.dataset.init_run_results(run_key)
+            run_results.message = f"Annotations propagated from {input_annotation_field} to {output_annotation_field}"
+            run_results.samples_processed = total_samples
+            run_results.propagation_scores = propagation_scores
+            run_results.num_evaluated = len(propagation_scores)
+            if propagation_scores:
+                run_results.mean_score = sum(propagation_scores.values()) / len(propagation_scores)
+            ctx.dataset.save_run_results(run_key, run_results, overwrite=True)
+            
+            # Maintain latest alias
+            latest_key = f"{plugin_namespace}/{self.config.name}/latest"
+            try:
+                ctx.dataset.rename_run(latest_key, run_key)
+            except Exception:
+                # First time; register an alias
+                run_info = ctx.dataset.get_run_info(run_key)
+                ctx.dataset.register_run(latest_key, run_info.config)
+
+            logger.info(f"Custom propagate_annotations_from_exemplars run stored: {run_key}")
+        except Exception as e:
+            # Custom runs not available (e.g., in test context or non-persistent dataset)
+            # Continue without failing
+            pass
+        
+        return {
+            "propagation_score": propagation_scores,
+            "message": f"Annotations propagated from {input_annotation_field} to {output_annotation_field}",
+            "samples_processed": total_samples,
+            "samples_evaluated": len(propagation_scores),
+            "run_key": run_key,
+        }
+
+    def resolve_input(self, ctx) -> types.Property:
+        # TODO(neeraja): warn for large datasets
         inputs = types.Object()
 
         # Get available fields from dataset schema for autocomplete
@@ -401,4 +562,5 @@ class PropagateAnnotationsFromExemplars(foo.Operator):
 
 def register(p):
     p.register(ExtractExemplarFrames)
+    p.register(PropagateAnnotationsFromAssignedExemplars)
     p.register(PropagateAnnotationsFromExemplars)
