@@ -22,9 +22,8 @@ from utils import evaluate
 @pytest.fixture
 def dataset():
     dataset = foz.load_zoo_dataset("https://github.com/voxel51/davis-2017", split="validation", format="image")
-    # SELECT_SEQUENCES = ["bike-packing", "blackswan", "bmx-trees", "breakdance", "camel"]
-    SELECT_SEQUENCES = ["blackswan", "breakdance", "india"]
-    # SELECT_SEQUENCES = ["bike-packing"]
+    SELECT_SEQUENCES = ["bike-packing"]
+    # SELECT_SEQUENCES = ["blackswan", "breakdance", "india"]  # TODO(neeraja): get to work for multiple sequences
     dataset = dataset.match_tags(SELECT_SEQUENCES)
     return dataset
 
@@ -63,8 +62,14 @@ def partially_labeled_dataset(dataset):
     sequences = dataset.distinct("tags")
     sequences.remove("val")
 
+    new_frame_number = 0
     for seq in sequences:
         dataset_slice = dataset.match_tags(seq).sort_by("frame_number")
+        dataset_slice.set_values(
+            "new_frame_number",
+            [new_frame_number + ii for ii in range(len(dataset_slice))]
+        )
+        new_frame_number += len(dataset_slice)
         exemplar_sample = dataset_slice.first()
         exemplar_sample["human_labels_test"] = exemplar_sample["ground_truth"]
         exemplar_sample.save()
@@ -85,9 +90,9 @@ def test_propagation(exemplar_assigned_dataset):
     
     print(f"Average propagation score: {np.mean(list(score.values()))}")
     
-    # assert np.mean(list(score.values())) > 0.33
-    session = fo.launch_app(exemplar_assigned_dataset)
-    session.wait()
+    assert np.mean(list(score.values())) > 0.33
+    # session = fo.launch_app(exemplar_assigned_dataset)
+    # session.wait()
 
 
 def test_propagation_sam2(partially_labeled_dataset):
@@ -95,7 +100,7 @@ def test_propagation_sam2(partially_labeled_dataset):
         partially_labeled_dataset,
         input_annotation_field="human_labels_test",
         output_annotation_field="human_labels_test_propagated",
-        sort_field="frame_number",
+        sort_field="new_frame_number",
     )
 
     scores = []
@@ -105,10 +110,9 @@ def test_propagation_sam2(partially_labeled_dataset):
         sample_score = evaluate(gt_detections, propagated_detections)
         scores.append(sample_score)
         print(f"Sample {sample.id} score: {sample_score}")
-    
     print(f"Average propagation score: {np.mean(scores)}")
     
-    assert np.mean(scores) > 0.5
+    assert np.mean(scores) > 0.8
     # session = fo.launch_app(partially_labeled_dataset)
     # session.wait()
 

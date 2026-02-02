@@ -61,6 +61,7 @@ class PropagatorSAM2:
         for ii, pp in enumerate(image_path_list):
             tmp_path = tmpdir / f"{ii:06d}{Path(pp).suffix}"
             tmp_path.symlink_to(Path(pp).resolve())
+        logger.info(f"Created temporary directory {tmpdir} with {len(image_path_list)} frames")
         return tmpdir
     
     def initialize(self, frame_path_list):
@@ -75,8 +76,8 @@ class PropagatorSAM2:
         self.preds_dict.clear()
         for idx, frame_path in enumerate(frame_path_list):
             self.preds_dict[frame_path] = None
-        logger.info(f"Inference state initialized with {len(frame_path_list)} frames")
         shutil.rmtree(frames_dir)
+        logger.info(f"Inference state initialized with {len(frame_path_list)} frames; cleaned up temporary directory {frames_dir}")
 
     def register_source_frame(self, source_filepath, source_detections):
         """
@@ -134,7 +135,7 @@ class PropagatorSAM2:
             None
             Populates the preds_dict with predictions for each frame
         """
-        # infer predictions for all frames in the inference state
+        propagated_to_count = 0
         for frame_idx, obj_ids, mask_logits in self.sam2_predictor.propagate_in_video(self.inference_state):
             target_filepath = list(self.preds_dict.keys())[frame_idx]
             target_frame = cv2.imread(target_filepath)
@@ -175,6 +176,9 @@ class PropagatorSAM2:
             
             logger.debug(f"Propagated {len(propagated_detections)} detections for frame {target_filepath}")
             self.preds_dict[target_filepath] = fo.Detections(detections=propagated_detections)
+            propagated_to_count += 1
+        
+        logger.info(f"Propagated detections to {propagated_to_count} frames out of {len(self.preds_dict)}")
     
     def propagate_to_target_frame(self, target_filepath):
         """

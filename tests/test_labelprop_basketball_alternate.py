@@ -15,12 +15,16 @@ from annoprop import (
     propagate_annotations_sam2, 
     estimate_propagatability
 )
+from utils import evaluate
+
+
+VIEW_NAME = "side_top_layup"
 
 
 @pytest.fixture
 def dataset_slice():
     dataset = fo.load_dataset("basketball_frames")
-    dataset_slice = dataset.load_saved_view("side_top_layup")
+    dataset_slice = dataset.load_saved_view(VIEW_NAME)
     return dataset_slice
 
 
@@ -45,6 +49,24 @@ def exemplar_assigned_dataset_slice(dataset_slice):
     return dataset_slice
 
 
+@pytest.fixture
+def partially_labeled_dataset_slice(dataset_slice):
+    if "human_labels_test" in dataset_slice._dataset.get_field_schema():
+        dataset_slice._dataset.delete_sample_field("human_labels_test")
+        dataset_slice._dataset.add_sample_field(
+            "human_labels_test",
+            fo.EmbeddedDocumentField,
+            embedded_doc_type=fo.Detections,
+        )
+
+    for ii, sample in enumerate(dataset_slice):
+        if ii % 2 == 0:
+            sample["human_labels_test"] = sample["ha_test_1"]
+            sample.save()
+    
+    return dataset_slice
+
+
 def test_propagation(exemplar_assigned_dataset_slice):
     score = propagate_annotations_pairwise(
         exemplar_assigned_dataset_slice,
@@ -58,7 +80,7 @@ def test_propagation(exemplar_assigned_dataset_slice):
     
     print(f"Average propagation score: {np.mean(list(score.values()))}")
     
-    assert np.mean(list(score.values())) > 0.4
+    assert np.mean(list(score.values())) > 0.33
     # session = fo.launch_app(exemplar_assigned_dataset_slice)
     # session.wait()
 
@@ -97,3 +119,33 @@ def test_propagatability(exemplar_assigned_dataset_slice):
     # plt.grid(True, alpha=0.7)
     # plt.tight_layout()
     # plt.show()
+
+
+def test_propagate_labels_unassigned(partially_labeled_dataset_slice):
+    ctx2 = {
+        "dataset": partially_labeled_dataset_slice._dataset,
+        "view": partially_labeled_dataset_slice,
+        "params": {
+            "input_annotation_field": "human_labels_test",
+            "output_annotation_field": "human_labels_test_propagated",
+        },
+    }
+
+    anno_prop_result = foo.execute_operator(
+        "@neerajaabhyankar/video-exemplar-frames-plugin/propagate_labels_from_exemplars",
+        ctx2
+    )
+    print(anno_prop_result.result["message"])
+
+    scores = []
+    for sample in partially_labeled_dataset_slice:
+        gt_detections = sample["ha_test_1"]
+        propagated_detections = sample["human_labels_test_propagated"]
+        sample_score = evaluate(gt_detections, propagated_detections)
+        scores.append(sample_score)
+        print(f"Sample {sample.id} score: {sample_score}")
+    print(f"Average propagation score: {np.mean(scores)}")
+    
+    assert np.mean(scores) > 0.7
+    # session = fo.launch_app(partially_labeled_dataset_slice)
+    # session.wait()

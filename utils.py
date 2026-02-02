@@ -79,10 +79,17 @@ def evaluate(original_detections, propagated_detections):
     # for now, only evaluates bounding boxes
     # TODO(neeraja): implement for masks
 
+    if not hasattr(original_detections, "detections") and not hasattr(propagated_detections, "detections"):
+        return 1.0
+    elif not hasattr(original_detections, "detections") or not hasattr(propagated_detections, "detections"):
+        return 0.0
+
     G = len(original_detections.detections)
     P = len(propagated_detections.detections)
 
-    if min(G, P) == 0:
+    if max(G, P) == 0:
+        return 1.0
+    elif min(G, P) == 0:
         return 0.0
 
     # IoU matrix: shape (G, P)
@@ -133,11 +140,18 @@ def evaluate_success_rate(original_detections, propagated_detections):
     Returns:
         float: The evaluation score
     """
+    if not hasattr(original_detections, "detections") and not hasattr(propagated_detections, "detections"):
+        return 1.0
+    elif not hasattr(original_detections, "detections") or not hasattr(propagated_detections, "detections"):
+        return 0.0
+
     # TODO(neeraja): implement for masks
     G = len(original_detections.detections)
     P = len(propagated_detections.detections)
 
-    if min(G, P) == 0:
+    if max(G, P) == 0:
+        return 1.0
+    elif min(G, P) == 0:
         return 0.0
 
     # IoU matrix: shape (G, P)
