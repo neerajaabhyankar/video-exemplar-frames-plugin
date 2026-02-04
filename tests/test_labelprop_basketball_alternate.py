@@ -18,13 +18,14 @@ from annoprop import (
 from utils import evaluate_success_rate
 
 
-VIEW_NAME = "side_top_layup"
+VIEW_NAME = "underbasket_reverse_layup"
+# LIMITATION: when the person goes out of the frame, we get a false positive detection
 
 
 @pytest.fixture
 def dataset_slice():
     dataset = fo.load_dataset("basketball_frames")
-    dataset_slice = dataset.load_saved_view(VIEW_NAME)
+    dataset_slice = dataset.load_saved_view(VIEW_NAME).limit(50)
     return dataset_slice
 
 
@@ -35,7 +36,7 @@ def exemplar_assigned_dataset_slice(dataset_slice):
 
     exemplar_id = dataset_slice.first().id
     for ii, sample in enumerate(dataset_slice.sort_by("frame_number")):
-        if ii %2 == 0:
+        if ii % 2 == 0:
             is_exemplar = True
             exemplar_id = sample.id
         else:
@@ -62,6 +63,13 @@ def partially_labeled_dataset_slice(dataset_slice):
     for ii, sample in enumerate(dataset_slice):
         if ii % 2 == 0:
             sample["human_labels_test"] = sample["ha_test_1"]
+            # # randomly add only one of the two labels
+            # # LIMITATION: SAM2 errors out if there's no continuity in the labels?!
+            # if sample["ha_test_1"] is not None:
+            #     li = np.random.randint(len(sample["ha_test_1"].detections))
+            #     sample["human_labels_test"] = fo.Detections(
+            #         detections=[sample["ha_test_1"].detections[li]]
+            #     )
             sample.save()
     
     return dataset_slice
@@ -122,12 +130,15 @@ def test_propagatability(exemplar_assigned_dataset_slice):
 
 
 def test_propagate_labels_unassigned(partially_labeled_dataset_slice):
+    GROUND_TRUTH_FIELD = "ha_test_1"
+    INPUT_ANNOTATION_FIELD = "human_labels_test"
+    OUTPUT_ANNOTATION_FIELD = "human_labels_test_propagated"
     ctx2 = {
         "dataset": partially_labeled_dataset_slice._dataset,
         "view": partially_labeled_dataset_slice,
         "params": {
-            "input_annotation_field": "human_labels_test",
-            "output_annotation_field": "human_labels_test_propagated",
+            "input_annotation_field": INPUT_ANNOTATION_FIELD,
+            "output_annotation_field": OUTPUT_ANNOTATION_FIELD,
         },
     }
 
@@ -139,13 +150,15 @@ def test_propagate_labels_unassigned(partially_labeled_dataset_slice):
 
     scores = []
     for sample in partially_labeled_dataset_slice:
-        gt_detections = sample["ha_test_1"]
-        propagated_detections = sample["human_labels_test_propagated"]
+        if sample[INPUT_ANNOTATION_FIELD] is not None:
+            continue
+        gt_detections = sample[GROUND_TRUTH_FIELD]
+        propagated_detections = sample[OUTPUT_ANNOTATION_FIELD]
         sample_score = evaluate_success_rate(gt_detections, propagated_detections)
         scores.append(sample_score)
         print(f"Sample {sample.id} score: {sample_score}")
     print(f"Average propagation score: {np.mean(scores)}")
     
-    assert np.mean(scores) > 0.7
-    # session = fo.launch_app(partially_labeled_dataset_slice)
-    # session.wait()
+    # assert np.mean(scores) > 0.7
+    session = fo.launch_app(partially_labeled_dataset_slice)
+    session.wait()

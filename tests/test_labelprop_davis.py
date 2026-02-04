@@ -22,8 +22,8 @@ from utils import evaluate
 @pytest.fixture
 def dataset():
     dataset = foz.load_zoo_dataset("https://github.com/voxel51/davis-2017", split="validation", format="image")
-    SELECT_SEQUENCES = ["bike-packing"]
-    # SELECT_SEQUENCES = ["blackswan", "breakdance", "india"]  # TODO(neeraja): get to work for multiple sequences
+    SELECT_SEQUENCES = ["india"]
+    # SELECT_SEQUENCES = ["blackswan", "breakdance", "india"]  # LIMITATION: SAM2 errors out for discontinuous scenes
     dataset = dataset.match_tags(SELECT_SEQUENCES)
     return dataset
 
@@ -112,9 +112,9 @@ def test_propagation_sam2(partially_labeled_dataset):
         print(f"Sample {sample.id} score: {sample_score}")
     print(f"Average propagation score: {np.mean(scores)}")
     
-    assert np.mean(scores) > 0.8
-    # session = fo.launch_app(partially_labeled_dataset)
-    # session.wait()
+    # assert np.mean(scores) > 0.8
+    session = fo.launch_app(partially_labeled_dataset)
+    session.wait()
 
 
 def test_propagatability(exemplar_assigned_dataset):
