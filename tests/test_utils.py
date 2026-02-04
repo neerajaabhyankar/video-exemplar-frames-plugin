@@ -170,6 +170,30 @@ class TestEvalMetrics:
         score = evaluate_success_rate(original, propagated)
         assert 0 < score < 0.5
 
+        # Test case from an example: exactly matching boxes
+        original = MockDetections([
+            {"bounding_box": [0.869071, 0.448725, 0.108700, 0.243545]},
+            {"bounding_box": [0.836372, 0.592978, 0.027977, 0.050664]},
+        ])
+        propagated = MockDetections([
+            {"bounding_box": [0.836372, 0.592978, 0.027977, 0.050664]},
+            {"bounding_box": [0.869071, 0.448725, 0.108700, 0.243545]},
+        ])
+        score = evaluate_success_rate(original, propagated)
+        assert abs(score - 1) < 1e-6
+
+        # Test case from an example: almost match
+        original = MockDetections([
+            {"bounding_box": [0.3265, 0.2241, 0.1307, 0.2330]},
+            {"bounding_box": [0.3663, 0.3451, 0.4114, 0.6512]},
+        ])
+        propagated = MockDetections([
+            {"bounding_box": [0.326625, 0.225, 0.13125, 0.2306]},
+            {"bounding_box": [0.3704375, 0.3473333333333333, 0.4079375, 0.6528]},
+        ])
+        score = evaluate_success_rate(original, propagated)
+        assert abs(score - 1) < 1e-1
+
     def test_evaluate_success_rate_matched(self):
         # Test case: both lists have 2 object each, one mostly overlapping
         original = MockDetections([

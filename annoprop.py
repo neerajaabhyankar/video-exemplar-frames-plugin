@@ -10,7 +10,7 @@ import fiftyone as fo
 logger = logging.getLogger(__name__)
 cv2.setNumThreads(1)
 
-from utils import evaluate, evaluate_success_rate
+from utils import evaluate_success_rate
 from embedding_utils import propagatability_pre_label, propagatability_post_label
 from labelprop_methods.siamese import PropagatorSiamFC
 from labelprop_methods.swintrack import PropagatorSwinTrack
@@ -81,7 +81,7 @@ def propagate_annotations_pairwise(
             if evaluate_propagation and sample[input_annotation_field]:
                 original_detections = sample[input_annotation_field]
                 # TODO(neeraja): decouple the matching and the evaluation
-                sample_score = evaluate(original_detections, propagated_detections)
+                sample_score = evaluate_success_rate(original_detections, propagated_detections)
                 logger.debug(f"Sample {sample.id} score: {sample_score}")
                 return sample_score
         
@@ -144,7 +144,7 @@ def propagate_annotations_sequential(
         if evaluate_propagation and sample[input_annotation_field]:
             original_detections = sample[input_annotation_field]
             # TODO(neeraja): decouple the matching and the evaluation
-            sample_score = evaluate(original_detections, propagated_detections)
+            sample_score = evaluate_success_rate(original_detections, propagated_detections)
             logger.debug(f"Sample {sample.id} score: {sample_score}")
             return sample_score
         
@@ -210,7 +210,7 @@ def propagate_annotations_sam2(
         if evaluate_propagation and sample[input_annotation_field]:
             original_detections = sample[input_annotation_field]
             # TODO(neeraja): decouple the matching and the evaluation
-            sample_score = evaluate(original_detections, propagated_detections)
+            sample_score = evaluate_success_rate(original_detections, propagated_detections)
             logger.debug(f"Sample {sample.id} score: {sample_score}")
             return sample_score
         

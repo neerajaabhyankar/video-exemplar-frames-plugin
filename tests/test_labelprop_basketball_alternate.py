@@ -15,7 +15,7 @@ from annoprop import (
     propagate_annotations_sam2, 
     estimate_propagatability
 )
-from utils import evaluate
+from utils import evaluate_success_rate
 
 
 VIEW_NAME = "side_top_layup"
@@ -141,7 +141,7 @@ def test_propagate_labels_unassigned(partially_labeled_dataset_slice):
     for sample in partially_labeled_dataset_slice:
         gt_detections = sample["ha_test_1"]
         propagated_detections = sample["human_labels_test_propagated"]
-        sample_score = evaluate(gt_detections, propagated_detections)
+        sample_score = evaluate_success_rate(gt_detections, propagated_detections)
         scores.append(sample_score)
         print(f"Sample {sample.id} score: {sample_score}")
     print(f"Average propagation score: {np.mean(scores)}")

@@ -163,16 +163,20 @@ def evaluate_success_rate(original_detections, propagated_detections):
     # Hungarian finds MIN cost → negate IoU
     row_ind, col_ind = linear_sum_assignment(-iou_matrix)
 
-    ious = []
-    for i, j in zip(row_ind, col_ind):
-        ious.append(iou_matrix[i, j])
-    ious = sorted(ious)[::-1]
+    # Get matched IoUs and pad with zeros for unmatched detections
+    ious = [iou_matrix[i, j] for i, j in zip(row_ind, col_ind)]
+    ious.extend([0] * (max(G, P) - min(G, P)))
+    ious = sorted(ious, reverse=True)
     
+    # Compute area under success curve (threshold vs success rate)
     area_under_curve = 0
-    for ii, iou in enumerate(ious):
-        area_under_curve += iou * (ii + 1)/len(ious)
+    count_thresh = 0  # the index of ious containing iou < iou_thresh
+    for ii, iou_thresh in enumerate(sorted(np.unique(ious), reverse=True)):
+        while count_thresh < len(ious) and ious[count_thresh] >= iou_thresh:
+            count_thresh += 1
+        area_under_curve += iou_thresh * (count_thresh-ii) / len(ious)
     
-    return area_under_curve / max(G, P)
+    return area_under_curve
 
 
 def evaluate_success_rate_matched(original_detections, propagated_detections):
@@ -192,8 +196,11 @@ def evaluate_success_rate_matched(original_detections, propagated_detections):
         ious.append(box_iou(od, pd))
     ious = sorted(ious)[::-1]
     
+    # Compute area under success curve (threshold vs success rate)
     area_under_curve = 0
-    for ii, iou in enumerate(ious):
-        area_under_curve += iou * (ii + 1)/len(ious)
-    
+    count_thresh = 0  # the index of ious containing iou < iou_thresh
+    for ii, iou_thresh in enumerate(sorted(np.unique(ious), reverse=True)):
+        while count_thresh < len(ious) and ious[count_thresh] >= iou_thresh:
+            count_thresh += 1
+        area_under_curve += iou_thresh * (count_thresh-ii) / len(ious)
     return area_under_curve
