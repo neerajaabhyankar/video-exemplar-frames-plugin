@@ -111,7 +111,7 @@ def test_propagation_sam2(partially_labeled_dataset):
         scores.append(sample_score)
         print(f"Sample {sample.id} score: {sample_score}")
     print(f"Average propagation score: {np.mean(scores)}")
-    
+
     assert np.mean(scores) > 0.8
     # session = fo.launch_app(partially_labeled_dataset)
     # session.wait()

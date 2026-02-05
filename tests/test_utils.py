@@ -144,6 +144,16 @@ class TestEvalMetrics:
         assert score < 1e-6
 
     def test_evaluate_success_rate(self):
+        # Test case: null bounding boxes
+        original = MockDetections([
+            {"bounding_box": [0.0, 0.0, 0.0, 0.0]},
+        ])
+        propagated = MockDetections([
+            {"bounding_box": [0.0, 0.0, 0.0, 0.0]},
+        ])
+        score = evaluate_success_rate(original, propagated)
+        assert abs(score - 1) < 1e-6
+
         # Test case: one of the lists empty
         original = MockDetections([])
         propagated = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])
