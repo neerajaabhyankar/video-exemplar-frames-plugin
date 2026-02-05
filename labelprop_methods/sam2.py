@@ -164,6 +164,7 @@ class PropagatorSAM2:
                         new_bbox, target_width, target_height
                     )
                     mask_fitted = pred[y1_new:y2_new, x1_new:x2_new]
+                    mask_fitted = (mask_fitted.astype(np.float32) / np.max(mask_fitted)).astype(np.uint8)
                 else:
                     mask_fitted = None
 

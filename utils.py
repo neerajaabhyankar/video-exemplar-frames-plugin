@@ -60,7 +60,7 @@ def box_iou(box_a, box_b) -> float:
     union = area_a + area_b - inter_area
 
     if union == 0:
-        return 0.0
+        return 1.0
 
     return inter_area / union
 
