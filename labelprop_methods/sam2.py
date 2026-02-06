@@ -79,6 +79,49 @@ class PropagatorSAM2:
         shutil.rmtree(frames_dir)
         logger.info(f"Inference state initialized with {len(frame_path_list)} frames; cleaned up temporary directory {frames_dir}")
 
+    def extract_spatial_embeddings(self, frame_filepath, feature_level=0):
+        """
+        Extract patch-wise embeddings for all images in the inference state.
+        
+        After initialize() (stage 1), this extracts vision features for all frames.
+        The embeddings are returned with spatial dimensions preserved.
+        
+        Args:
+            frame_filepath: The frame file path to extract embeddings for
+            feature_level: Which feature level to extract (0=highest res (default), -1=lowest res)
+        
+        Returns:
+            embedding: A tensor with shape (C, H, W) for the given feature level.
+            C = number of channels, H = embedding height, W = embedding width
+        """
+        import torch
+        if self.inference_state is None:
+            raise RuntimeError("Must call initialize() before extract_spatial_embeddings()")
+        
+        num_frames = self.inference_state["num_frames"]
+        embeddings = {}
+        
+        logger.info(f"Extracting patch embeddings for {num_frames} frames...")
+        
+        with torch.no_grad():
+            for frame_idx in range(num_frames):
+                _, _, vision_feats, _, feat_sizes = self.sam2_predictor._get_image_feature(
+                    self.inference_state,
+                    frame_idx,
+                    batch_size=1,
+                )
+                vision_feat = vision_feats[feature_level]
+                feat_size = feat_sizes[feature_level]
+
+                # feat shape: (HW, B, C) -> reshape to (B, C, H, W)
+                H, W = feat_size
+                B, C = vision_feat.shape[1], vision_feat.shape[2]
+                spatial_feat = vision_feat.permute(1, 2, 0).view(B, C, H, W)
+                spatial_feat = spatial_feat.squeeze(0).cpu().numpy()
+        
+        logger.info(f"Extracted spatial embeddings for {frame_filepath}")
+        return spatial_feat
+
     def register_source_frame(self, source_filepath, source_detections):
         """
         Register the source frame and detections with SAM2.
