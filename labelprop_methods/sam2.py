@@ -98,28 +98,25 @@ class PropagatorSAM2:
         if self.inference_state is None:
             raise RuntimeError("Must call initialize() before extract_spatial_embeddings()")
         
-        num_frames = self.inference_state["num_frames"]
-        embeddings = {}
-        
-        logger.info(f"Extracting patch embeddings for {num_frames} frames...")
+        frame_idx = list(self.preds_dict.keys()).index(frame_filepath)
+        logger.debug(f"Extracting patch embeddings for frame {frame_filepath}...")
         
         with torch.no_grad():
-            for frame_idx in range(num_frames):
-                _, _, vision_feats, _, feat_sizes = self.sam2_predictor._get_image_feature(
-                    self.inference_state,
-                    frame_idx,
-                    batch_size=1,
-                )
-                vision_feat = vision_feats[feature_level]
-                feat_size = feat_sizes[feature_level]
+            _, _, vision_feats, _, feat_sizes = self.sam2_predictor._get_image_feature(
+                self.inference_state,
+                frame_idx,
+                batch_size=1,
+            )
+            vision_feat = vision_feats[feature_level]
+            feat_size = feat_sizes[feature_level]
 
-                # feat shape: (HW, B, C) -> reshape to (B, C, H, W)
-                H, W = feat_size
-                B, C = vision_feat.shape[1], vision_feat.shape[2]
-                spatial_feat = vision_feat.permute(1, 2, 0).view(B, C, H, W)
-                spatial_feat = spatial_feat.squeeze(0).cpu().numpy()
+            # feat shape: (HW, B, C) -> reshape to (B, C, H, W)
+            H, W = feat_size
+            B, C = vision_feat.shape[1], vision_feat.shape[2]
+            spatial_feat = vision_feat.permute(1, 2, 0).view(B, C, H, W)
+            spatial_feat = spatial_feat.squeeze(0).cpu().numpy()
         
-        logger.info(f"Extracted spatial embeddings for {frame_filepath}")
+        logger.debug(f"Extracted spatial embeddings for {frame_filepath}")
         return spatial_feat
 
     def register_source_frame(self, source_filepath, source_detections):

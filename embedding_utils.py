@@ -1,13 +1,12 @@
 from typing import Tuple, Union, Optional
+from tqdm import tqdm
 import numpy as np
 import cv2
-import torch
 import logging
 
 import fiftyone as fo
 
 from utils import normalized_bbox_to_pixel_coords
-from labelprop_methods.siamese import PropagatorSiamFC
 
 fo.config.database_validation = False
 logger = logging.getLogger(__name__)
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 BACKBONE_INPUT_SIZE = 255
 
-def preprocess_for_siamfc(img: np.ndarray, out_size: int = BACKBONE_INPUT_SIZE, device=None) -> torch.Tensor:
+def preprocess_for_siamfc(img: np.ndarray, out_size: int = BACKBONE_INPUT_SIZE, device=None) -> np.ndarray:
     """
     img: np.ndarray (3, H, W).
     Returns: torch.Tensor of shape (1, 3, out_size, out_size), float32.
@@ -27,25 +26,26 @@ def preprocess_for_siamfc(img: np.ndarray, out_size: int = BACKBONE_INPUT_SIZE, 
     # Resize to out_size x out_size (warps aspect ratio, like SiamFC)
     img_resized = cv2.resize(img, (out_size, out_size), interpolation=cv2.INTER_LINEAR)
 
-    # # Back to CHW
-    # img_chw = np.transpose(img_resized, (2, 0, 1))
-
-    # # To tensor, add batch dim
-    # x = torch.from_numpy(img_chw).unsqueeze(0).float()
-    # if device is not None:
-    #     x = x.to(device)
     return img_resized
 
 
-def compute_backbone_embeddings_siamfc(frames: Union[fo.core.collections.SampleCollection, list[np.ndarray]]) -> np.ndarray:
+def compute_backbone_embeddings_siamfc(
+    frames: Union[fo.core.collections.SampleCollection, list[np.ndarray]],
+    spatial_embedding_field_name: str = "embeddings_siamfc",
+) -> np.ndarray:
     """
     Compute the backbone embeddings for the given frames using SiamFC.
     Args:
         frames: A fiftyone SampleCollection or list of numpy arrays containing the frames to compute the embeddings for.
+        spatial_embedding_field_name: The field in which to save the spatial embeddings of the image
     Returns:
-        Embeddings numpy array of shape (NN, DD, HH, WW)
-        where NN is the number of frames, DD is the embedding dimension, HH, WW are the spatial dimensions.
+        None
+        Populates the `spatial_embedding_field_name` field with the embeddings of the frames.
+        Each has shape (DD, HH, WW), where DD is the embedding dimension, HH, WW are the spatial dimensions.
     """
+    import torch
+    from labelprop_methods.siamese import PropagatorSiamFC
+
     propagator = PropagatorSiamFC()
     tracker = propagator.setup()
     _ = tracker.net.eval()
@@ -62,16 +62,14 @@ def compute_backbone_embeddings_siamfc(frames: Union[fo.core.collections.SampleC
             tracker.device).permute(2, 0, 1).unsqueeze(0).float()
         embedding = tracker.net.backbone(x)
         embedding = embedding.detach().cpu().numpy().squeeze(0)
-        return embedding
+        frame[spatial_embedding_field_name] = embedding
+        frame.save()
+        return
     
     logger.info(f"Computing backbone embeddings for {len(frames)} frames")
-    # embeddings = list(frames.map_samples(compute_embedding))
-    embeddings = []
+    # _ = list(frames.map_samples(compute_embedding, save=True))
     for frame in frames:
-        embedding = compute_embedding(frame)
-        embeddings.append(embedding)
-
-    return np.array(embeddings)
+        compute_embedding(frame)
 
 
 def hausdorff_distance_between_images_nbdbased(img_emb_1, img_emb_2):
@@ -146,23 +144,28 @@ def compute_classical_mds_embedding(D, dim=MDS_DIM, eig_tol=MDS_EIG_TOL):
     return X
 
 
-def compute_hausdorff_distance_matrix(frames: fo.core.collections.SampleCollection) -> np.ndarray:
+def compute_hausdorff_distance_matrix(
+    frames: fo.core.collections.SampleCollection,
+    spatial_embedding_field_name: str = "embeddings_siamfc",
+) -> np.ndarray:
     """
     Args:
         frames: A fiftyone SampleCollection
+        spatial_embedding_field_name: The field containing spatial embeddings of the image, from a model backbone.
     Returns:
         A numpy array of shape (NN, NN) containing the Hausdorff distance matrix.
         where NN is the number of frames.
     """
     NN = len(frames)
-    all_embeddings = compute_backbone_embeddings_siamfc(frames)
 
-    logger.info(f"Computing Hausdorff distance matrix for {NN} frames")
+    logger.info(f"Computing Hausdorff distance matrix for {NN} frames (quadratic complexity)")
     hausdorff_matrix = np.zeros((NN, NN))
-    for ii in range(NN):
-        for jj in range(ii+1, NN):
+    for ii, frame in tqdm(enumerate(frames)):
+        for jj, other_frame in enumerate(frames):
+            if ii >= jj:
+                continue
             hausdorff_matrix[ii, jj] = hausdorff_distance_between_images_nbdbased(
-                all_embeddings[ii], all_embeddings[jj]
+                frame[spatial_embedding_field_name], other_frame[spatial_embedding_field_name]
             )
 
     # fill up the lower triangle
@@ -171,24 +174,27 @@ def compute_hausdorff_distance_matrix(frames: fo.core.collections.SampleCollecti
     return hausdorff_matrix
 
 
-def compute_hausdorff_mds_embedding_siamfc(
+def compute_hausdorff_mds_embedding(
     frames: fo.core.collections.SampleCollection,
-    field_name: str = "embeddings_hausdorff_mds_siamfc_8",
+    spatial_embedding_field_name: str = "embeddings_siamfc",
+    mds_embedding_field_name: str = "embeddings_hausdorff_mds_siamfc_8",
 ) -> np.ndarray:
     """
     Args:
         frames: A fiftyone SampleCollection
+        spatial_embedding_field_name: The field containing spatial embeddings of the image, from a model backbone.
+        mds_embedding_field_name: The field name of the output MDS embeddings
     Returns:
         None
     Populates the `field_name` of the frames with the output of the
     Hausdorff embedding computed via MDS with the SiamFC backbone.
     Dimension MDS_DIM.
     """
-    hausdorff_matrix = compute_hausdorff_distance_matrix(frames)
+    hausdorff_matrix = compute_hausdorff_distance_matrix(frames, spatial_embedding_field_name)
     mds_embedding = compute_classical_mds_embedding(hausdorff_matrix)
 
-    logger.info(f"Populating {field_name} with embeddings of shape {mds_embedding.shape}")
-    frames.set_values(field_name, mds_embedding)
+    logger.info(f"Populating {mds_embedding_field_name} with embeddings of shape {mds_embedding.shape}")
+    frames.set_values(mds_embedding_field_name, mds_embedding)
     frames.save()
 
 
@@ -200,9 +206,9 @@ def propagatability_pre_label(source_frame, target_frame):
     Returns:
         The propagatability score
     """
-    backbone_embeddings = compute_backbone_embeddings_siamfc([source_frame, target_frame])
+    compute_backbone_embeddings_siamfc([source_frame, target_frame])
     hausdorff_distance = hausdorff_distance_between_images_nbdbased(
-        backbone_embeddings[0], backbone_embeddings[1]
+        source_frame["embeddings_siamfc"], target_frame["embeddings_siamfc"]
     )
     return 1.0 / hausdorff_distance
 
@@ -216,14 +222,14 @@ def propagatability_post_label(source_frame, target_frame, source_detections):
     Returns:
         The propagatability score
     """
-    backbone_embeddings = compute_backbone_embeddings_siamfc([source_frame, target_frame])
-    DD, HH, WW = backbone_embeddings[0].shape
+    compute_backbone_embeddings_siamfc([source_frame, target_frame], spatial_embedding_field_name="embeddings_siamfc")
+    DD, HH, WW = source_frame["embeddings_siamfc"].shape
     # max_{all detections}[min_{all target patches}[distance(detection patch, target patch)]]
     # TODO(neeraja): test
     max_distance = 0.0
     for detection in source_detections.detections:
         detection_patch_corners = normalized_bbox_to_pixel_coords(detection.bounding_box, WW, HH)  # x1, y1, x2, y2
-        detection_patch = backbone_embeddings[0][
+        detection_patch = source_frame["embeddings_siamfc"][
             :,
             detection_patch_corners[1]:detection_patch_corners[3],
             detection_patch_corners[0]:detection_patch_corners[2]
@@ -233,7 +239,7 @@ def propagatability_post_label(source_frame, target_frame, source_detections):
         patch_w = detection_patch.shape[2]
         num_y = HH - patch_h + 1
         num_x = WW - patch_w + 1
-        target_emb = backbone_embeddings[1]
+        target_emb = target_frame["embeddings_siamfc"]
         s0, s1, s2 = target_emb.strides
         patches = np.lib.stride_tricks.as_strided(
             target_emb,

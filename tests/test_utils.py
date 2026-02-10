@@ -15,7 +15,10 @@ from utils import (
     evaluate_success_rate,
     evaluate_success_rate_matched,
 )
-from embedding_utils import compute_hausdorff_mds_embedding_siamfc
+from embedding_utils import (
+    compute_backbone_embeddings_siamfc,
+    compute_hausdorff_mds_embedding,
+)
 
 
 class TestBasicUtils:
@@ -235,6 +238,11 @@ class TestEmbeddingUtils:
         # Test case: compute the Hausdorff MDS embedding for a small dataset
         dataset = foz.load_zoo_dataset("quickstart")
         dataset_slice = dataset.take(10)
-        compute_hausdorff_mds_embedding_siamfc(dataset_slice, "embeddings_test")
+        compute_backbone_embeddings_siamfc(dataset_slice, spatial_embedding_field_name="embeddings_siamfc")
+        compute_hausdorff_mds_embedding(
+            dataset_slice,
+            spatial_embedding_field_name="embeddings_siamfc",
+            mds_embedding_field_name="embeddings_test",
+        )
         assert dataset_slice.has_field("embeddings_test")
         assert np.array(dataset_slice.values("embeddings_test")).shape == (10, 8)
