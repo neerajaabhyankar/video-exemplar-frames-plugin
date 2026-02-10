@@ -1,7 +1,33 @@
+import os
+import sys
+import importlib.util
 from typing import Tuple, Union, Optional
 import numpy as np
 import cv2
 from scipy.optimize import linear_sum_assignment
+
+
+detection_area = lambda det: det["bounding_box"][2] * det["bounding_box"][3]
+
+
+def load_local_utils(filename: str, module_name: str):
+    """
+    Load this plugin's local `utils.py` under a unique module name.
+
+    This avoids collisions with other plugins that may also define a
+    top-level `utils` module (for example, `@51labs/zero-shot-coreset-selection`).
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    module_path = os.path.join(here, filename)
+
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load module {module_name} from {module_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def fit_mask_to_bbox(mask: np.ndarray, bbox_size: Tuple[int, int]) -> np.ndarray:
@@ -142,8 +168,10 @@ def evaluate_success_rate(original_detections, propagated_detections):
     """
     if not hasattr(original_detections, "detections") and not hasattr(propagated_detections, "detections"):
         return 1.0
-    elif not hasattr(original_detections, "detections") or not hasattr(propagated_detections, "detections"):
-        return 0.0
+    elif not hasattr(original_detections, "detections"):
+        return float(len(propagated_detections.detections) == 0)
+    elif not hasattr(propagated_detections, "detections"):
+        return float(len(original_detections.detections) == 0)
 
     # TODO(neeraja): implement for masks
     G = len(original_detections.detections)
@@ -151,8 +179,12 @@ def evaluate_success_rate(original_detections, propagated_detections):
 
     if max(G, P) == 0:
         return 1.0
-    elif min(G, P) == 0:
-        return 0.0
+    if min(G, P) == 0:
+        # if all other detections are null boxes, return 1.0
+        if G > 0:
+            return float(max([detection_area(od) for od in original_detections.detections]) == 0)
+        elif P > 0:
+            return float(max([detection_area(pd) for pd in propagated_detections.detections]) == 0)
 
     # IoU matrix: shape (G, P)
     iou_matrix = np.zeros((G, P), dtype=np.float32)

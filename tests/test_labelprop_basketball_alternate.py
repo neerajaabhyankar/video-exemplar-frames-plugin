@@ -15,11 +15,10 @@ from annoprop import (
     propagate_annotations_sam2, 
     estimate_propagatability
 )
-from utils import evaluate_success_rate
+from suc_utils import evaluate_success_rate
 
 
-VIEW_NAME = "underbasket_reverse_layup"
-# LIMITATION: when the person goes out of the frame, we get a false positive detection
+VIEW_NAME = "side_top_layup"
 
 
 @pytest.fixture
@@ -159,6 +158,6 @@ def test_propagate_labels_unassigned(partially_labeled_dataset_slice):
         print(f"Sample {sample.id} score: {sample_score}")
     print(f"Average propagation score: {np.mean(scores)}")
     
-    # assert np.mean(scores) > 0.7
-    session = fo.launch_app(partially_labeled_dataset_slice)
-    session.wait()
+    assert np.mean(scores) > 0.7
+    # session = fo.launch_app(partially_labeled_dataset_slice)
+    # session.wait()

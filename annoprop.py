@@ -10,7 +10,7 @@ import fiftyone as fo
 logger = logging.getLogger(__name__)
 cv2.setNumThreads(1)
 
-from utils import evaluate_success_rate
+from suc_utils import evaluate_success_rate
 from embedding_utils import propagatability_pre_label, propagatability_post_label
 from labelprop_methods.siamese import PropagatorSiamFC
 from labelprop_methods.swintrack import PropagatorSwinTrack

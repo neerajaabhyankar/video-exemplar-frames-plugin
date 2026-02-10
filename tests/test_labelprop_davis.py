@@ -16,7 +16,7 @@ from annoprop import (
     propagate_annotations_sam2,
     estimate_propagatability
 )
-from utils import evaluate
+from suc_utils import evaluate
 
 
 @pytest.fixture
@@ -71,21 +71,16 @@ def partially_labeled_dataset(dataset):
         )
         new_frame_number += len(dataset_slice)
 
-        # # label only the first
-        # exemplar_sample = dataset_slice.first()
-        # exemplar_sample["human_labels_test"] = exemplar_sample["ground_truth"]
-        # exemplar_sample.save()
-
-        # # label every Nth
-        # for ii, sample in enumerate(dataset_slice[1:]):
-        #     if ii % 10 == 0:
-        #         sample["human_labels_test"] = sample["ground_truth"]
-        #         sample.save()
+        # label only the first
+        exemplar_sample = dataset_slice.first()
+        exemplar_sample["human_labels_test"] = exemplar_sample["ground_truth"]
+        exemplar_sample.save()
         
-        # label only the last
-        last_sample = dataset_slice.last()
-        last_sample["human_labels_test"] = last_sample["ground_truth"]
-        last_sample.save()
+        # # label only the last
+        # # LIMITATION: SAM2 does not propagate backward
+        # last_sample = dataset_slice.last()
+        # last_sample["human_labels_test"] = last_sample["ground_truth"]
+        # last_sample.save()
     
     return dataset
 

@@ -6,7 +6,7 @@ from pathlib import Path
 import fiftyone.zoo as foz
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from utils import (
+from suc_utils import (
     fit_mask_to_bbox,
     normalized_bbox_to_pixel_coords,
     box_iou,
@@ -90,7 +90,8 @@ class TestBasicUtils:
 class MockDetections:
     """Mock object to simulate detections with .detections attribute"""
     def __init__(self, detections):
-        self.detections = detections
+        if detections is not None:
+            self.detections = detections
 
 
 class TestEvalMetrics:
@@ -145,9 +146,22 @@ class TestEvalMetrics:
         ])
         score = evaluate_matched(original, propagated)
         assert score < 1e-6
+    
+    def test_evaluate_success_rate_nulls(self):
+        # Test case: null detections
+        original = MockDetections(None)
+        propagated = MockDetections(None)
+        score = evaluate_success_rate(original, propagated)
+        assert abs(score - 1) < 1e-6
 
-    def test_evaluate_success_rate(self):
+        # Test case: empty detections
+        original = MockDetections(None)
+        propagated = MockDetections([])
+        score = evaluate_success_rate(original, propagated)
+        assert abs(score - 1) < 1e-6
+        
         # Test case: null bounding boxes
+        # Note: we should never have null bounding boxes in the first place
         original = MockDetections([
             {"bounding_box": [0.0, 0.0, 0.0, 0.0]},
         ])
@@ -157,6 +171,16 @@ class TestEvalMetrics:
         score = evaluate_success_rate(original, propagated)
         assert abs(score - 1) < 1e-6
 
+        # Test case: null bounding boxes vs empty detections
+        # Note: we should never have null bounding boxes in the first place
+        original = MockDetections([])
+        propagated = MockDetections([
+            {"bounding_box": [0.0, 0.0, 0.0, 0.0]},
+        ])
+        score = evaluate_success_rate(original, propagated)
+        assert abs(score - 1) < 1e-6
+
+    def test_evaluate_success_rate(self):
         # Test case: one of the lists empty
         original = MockDetections([])
         propagated = MockDetections([{"bounding_box": [0.1, 0.1, 0.2, 0.2]}])

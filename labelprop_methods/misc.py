@@ -7,7 +7,7 @@ import cv2
 
 import fiftyone as fo
 
-from utils import fit_mask_to_bbox, normalized_bbox_to_pixel_coords
+from suc_utils import fit_mask_to_bbox, normalized_bbox_to_pixel_coords
 
 logger = logging.getLogger(__name__)
 
