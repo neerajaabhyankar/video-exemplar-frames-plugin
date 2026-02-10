@@ -6,7 +6,7 @@ import logging
 
 import fiftyone as fo
 
-from utils import normalized_bbox_to_pixel_coords
+from  suc_utils import normalized_bbox_to_pixel_coords
 
 fo.config.database_validation = False
 logger = logging.getLogger(__name__)
@@ -50,11 +50,7 @@ def compute_backbone_embeddings_siamfc(
     tracker = propagator.setup()
     _ = tracker.net.eval()
     
-    def compute_embedding(frame) -> np.ndarray:
-        if isinstance(frame, fo.core.sample.Sample) or isinstance(frame, fo.core.sample.SampleView):
-            img = cv2.imread(frame.filepath)            
-        else:
-            img = frame
+    def compute_embedding(img: np.ndarray) -> np.ndarray:
         # Convert to torch tensor and process through backbone (similar to siamfc.py:159-166)
         # but without cropping - send entire image
         img = preprocess_for_siamfc(img)
@@ -62,14 +58,26 @@ def compute_backbone_embeddings_siamfc(
             tracker.device).permute(2, 0, 1).unsqueeze(0).float()
         embedding = tracker.net.backbone(x)
         embedding = embedding.detach().cpu().numpy().squeeze(0)
-        frame[spatial_embedding_field_name] = embedding
-        frame.save()
-        return
+        return embedding
     
     logger.info(f"Computing backbone embeddings for {len(frames)} frames")
-    # _ = list(frames.map_samples(compute_embedding, save=True))
-    for frame in frames:
-        compute_embedding(frame)
+
+    if isinstance(frames, fo.core.collections.SampleCollection):
+        def populate_embedding(sample: fo.core.sample.Sample):
+            img = cv2.imread(sample.filepath)
+            embedding = compute_embedding(img)
+            sample[spatial_embedding_field_name] = embedding
+            return sample
+        
+        # _ = list(frames.map_samples(populate_embedding, save=True))
+        # TODO(neeraja): look into why mapping fails
+        for sample in frames:
+            populate_embedding(sample)
+            sample.save()
+        return None
+    else:
+        embeddings = [compute_embedding(frame) for frame in frames]
+        return embeddings
 
 
 def hausdorff_distance_between_images_nbdbased(img_emb_1, img_emb_2):
@@ -198,38 +206,38 @@ def compute_hausdorff_mds_embedding(
     frames.save()
 
 
-def propagatability_pre_label(source_frame, target_frame):
+def propagatability_pre_label(source_frame: np.ndarray, target_frame: np.ndarray):
     """
     Args:
-        source_frame: The source frame
-        target_frame: The target frame
+        source_frame: The source frame array
+        target_frame: The target frame array
     Returns:
         The propagatability score
     """
-    compute_backbone_embeddings_siamfc([source_frame, target_frame])
+    source_embedding, target_embedding = compute_backbone_embeddings_siamfc([source_frame, target_frame])
     hausdorff_distance = hausdorff_distance_between_images_nbdbased(
-        source_frame["embeddings_siamfc"], target_frame["embeddings_siamfc"]
+        source_embedding, target_embedding
     )
     return 1.0 / hausdorff_distance
 
 
-def propagatability_post_label(source_frame, target_frame, source_detections):
+def propagatability_post_label(source_frame: np.ndarray, target_frame: np.ndarray, source_detections: fo.Detections):
     """
     Args:
-        source_frame: The source frame
-        target_frame: The target frame
+        source_frame: The source frame array
+        target_frame: The target frame array
         source_detections: The source detections
     Returns:
         The propagatability score
     """
-    compute_backbone_embeddings_siamfc([source_frame, target_frame], spatial_embedding_field_name="embeddings_siamfc")
-    DD, HH, WW = source_frame["embeddings_siamfc"].shape
+    source_embedding, target_embedding = compute_backbone_embeddings_siamfc([source_frame, target_frame])
+    DD, HH, WW = source_embedding.shape
     # max_{all detections}[min_{all target patches}[distance(detection patch, target patch)]]
     # TODO(neeraja): test
     max_distance = 0.0
     for detection in source_detections.detections:
         detection_patch_corners = normalized_bbox_to_pixel_coords(detection.bounding_box, WW, HH)  # x1, y1, x2, y2
-        detection_patch = source_frame["embeddings_siamfc"][
+        detection_patch = source_embedding[
             :,
             detection_patch_corners[1]:detection_patch_corners[3],
             detection_patch_corners[0]:detection_patch_corners[2]
@@ -239,7 +247,7 @@ def propagatability_post_label(source_frame, target_frame, source_detections):
         patch_w = detection_patch.shape[2]
         num_y = HH - patch_h + 1
         num_x = WW - patch_w + 1
-        target_emb = target_frame["embeddings_siamfc"]
+        target_emb = target_embedding
         s0, s1, s2 = target_emb.strides
         patches = np.lib.stride_tricks.as_strided(
             target_emb,

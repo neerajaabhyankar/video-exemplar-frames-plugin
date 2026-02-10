@@ -10,7 +10,7 @@ from collections import OrderedDict
 
 import fiftyone as fo
 
-from utils import normalized_bbox_to_pixel_coords, fit_mask_to_bbox
+from suc_utils import normalized_bbox_to_pixel_coords, fit_mask_to_bbox
 
 logger = logging.getLogger(__name__)
 

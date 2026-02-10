@@ -134,6 +134,7 @@ def extract_exemplar_frames(
                 "params": {
                     "embeddings": embedding_field,
                     "zcore_score_field": zcore_score_field_name,
+                    "coreset_size": 0,
                 },
             }
             foo.execute_operator("@51labs/zero-shot-coreset-selection/compute_zcore_score", ctx)
