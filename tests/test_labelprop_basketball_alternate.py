@@ -15,7 +15,7 @@ from annoprop import (
     propagate_annotations_sam2, 
     estimate_propagatability
 )
-from utils import evaluate_success_rate
+from suc_utils import evaluate_success_rate
 
 
 VIEW_NAME = "side_top_layup"

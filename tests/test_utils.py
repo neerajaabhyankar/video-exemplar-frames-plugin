@@ -10,6 +10,8 @@ from utils import (
     fit_mask_to_bbox,
     normalized_bbox_to_pixel_coords,
     box_iou,
+)
+from suc_utils import (
     evaluate,
     evaluate_matched,
     evaluate_success_rate,

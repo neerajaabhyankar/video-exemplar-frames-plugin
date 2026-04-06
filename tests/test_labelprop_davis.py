@@ -16,7 +16,7 @@ from annoprop import (
     propagate_annotations_sam2,
     estimate_propagatability
 )
-from utils import evaluate
+from suc_utils import evaluate
 
 
 @pytest.fixture
